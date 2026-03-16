@@ -25,7 +25,7 @@ pandas>=2.0.0               # 数据分析
 pypinyin>=0.50.0            # Name-to-code resolver (pinyin matching)
 openpyxl>=3.1.0             # Excel (.xlsx) parsing for import
 numpy>=1.24.0               # 数值计算
-json-repair>=0.55.1         # JSON 修复
+json-repair>=0.44.1         # JSON 修复 (PyPI最新版本)
 
 # AI 分析
 litellm>=1.80.10            # Unified LLM client (Gemini/Anthropic/OpenAI/DeepSeek etc.)
