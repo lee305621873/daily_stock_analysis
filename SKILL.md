@@ -1,11 +1,189 @@
 ---
 name: "stock_analyzer"
-description: "分析股票和市场。当用户想要分析单个或多个股票，或进行市场复盘时调用。"
+description: "A股/港股/美股智能分析系统技能。当用户想要分析单个或多个股票、进行市场复盘、启动 Web/API 服务、配置 LLM/通知/数据源或使用 Agent 策略问股时调用。"
 ---
 
-# 股票分析器
+# 股票智能分析系统
 
-本技能基于 `analyzer_service.py` 的逻辑，提供分析股票和整体市场的功能。
+本技能覆盖本仓库的分析函数调用、本地启动、常用配置和 Web/API 使用方式。优先复用现有入口：命令行走 `main.py`，代码调用优先走 `analyzer_service.py`。
+
+## 项目结构
+
+```text
+daily_stock_analysis/
+├── main.py                 # 主入口程序
+├── analyzer_service.py     # 股票分析服务（代码调用推荐入口）
+├── api/                    # FastAPI 后端
+├── apps/dsa-web/           # React 前端
+├── src/
+│   ├── config.py           # 配置管理
+│   ├── analyzer.py         # AI 分析器
+│   ├── notification.py     # 通知服务
+│   ├── search_service.py   # 新闻搜索
+│   ├── scheduler.py        # 定时任务
+│   ├── agent/              # Agent 策略系统
+│   └── services/           # 业务服务
+├── bot/                    # 机器人平台
+├── data_provider/          # 数据源
+└── strategies/             # 交易策略 YAML 文件
+```
+
+## 本地启动
+
+如果目标是运行整个项目，而不是只调用分析函数，优先按下面顺序检查：
+
+1. Python 使用 3.10+；仓库在 3.9 下会因为 `|` 联合类型和 Pydantic 解析报错。
+2. Web 前端使用较新的 Node；本仓库实测 `Node 22.14.0` 可以完成 `apps/dsa-web` 构建。
+3. `.env` 中至少要有一个可用 LLM 配置；当前仓库可用 `LLM_CHANNELS + LLM_<NAME>_*` 方式接第三方 OpenAI 兼容接口。
+
+推荐启动顺序：
+
+```bash
+python3.10 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+
+cd apps/dsa-web
+nvm use 22.14.0
+npm ci
+npm run build
+cd ../..
+
+WEBUI_AUTO_BUILD=false .venv/bin/python main.py --webui-only --host 127.0.0.1 --port 8000
+```
+
+说明：
+
+- `npm run build` 会把前端静态资源输出到仓库的 `static/` 目录。
+- 已经手动构建前端时，建议启动前设置 `WEBUI_AUTO_BUILD=false`，避免服务启动时再次执行 `npm install && npm run build`。
+- Web 和 API 共用同一个服务入口；`--webui-only` 启动后，页面和接口都挂在 `http://127.0.0.1:8000`。
+- 只开 API 时可用 `.venv/bin/python main.py --serve-only --host 127.0.0.1 --port 8000`。
+- 正常执行一次完整分析时可直接运行 `.venv/bin/python main.py`。
+- 定时任务模式可用 `.venv/bin/python main.py --schedule`。
+- 配置检查可先跑 `python test_env.py --config`；健康检查可访问 `http://127.0.0.1:8000/api/health`。
+
+常见问题：
+
+- 前端若报 `Cannot find module 'vite'` 或 `vite/client`，通常是 `apps/dsa-web` 依赖未安装，或 Node 版本过低。
+- 后端若报 `No module named 'dotenv'`、`fastapi`、`litellm`，说明依赖没有安装到当前 `.venv`。
+- Web 服务日志若显示前端静态资源未就绪，先重新执行 `cd apps/dsa-web && npm ci && npm run build`。
+- macOS 出现 `NotOpenSSLWarning` 多数不阻断运行，可先继续验证主流程。
+
+## 运行模式
+
+```bash
+python main.py                      # 正常运行
+python main.py --debug              # 调试模式
+python main.py --dry-run            # 仅获取数据，不进行 AI 分析
+python main.py --stocks 600519      # 指定股票
+python main.py --force-run          # 跳过交易日检查强制执行
+python main.py --market-review      # 仅运行大盘复盘
+python main.py --no-market-review   # 跳过大盘复盘
+python main.py --schedule           # 定时任务模式
+python main.py --no-run-immediately # 定时模式启动时不立即执行
+python main.py --webui              # 启动 Web 界面 + 执行分析
+python main.py --webui-only         # 仅启动 Web 界面
+python main.py --serve              # 启动 FastAPI 服务 + 执行分析
+python main.py --serve-only         # 仅启动 API 服务
+python main.py --backtest           # 运行回测
+```
+
+## 必需配置
+
+### 自选股列表
+
+```env
+STOCK_LIST=600519,300750,002594,hk00700,AAPL
+```
+
+代码格式：
+
+- A 股：6 位数字，例如 `600519`
+- 港股：`hk` + 5 位数字，例如 `hk00700`
+- 美股：字母代码，例如 `AAPL`
+
+### LLM 配置
+
+至少配置一组可用模型。
+
+简单模式：
+
+```env
+GEMINI_API_KEY=your_gemini_key
+# 或 DEEPSEEK_API_KEY=your_deepseek_key
+# 或 AIHUBMIX_KEY=your_aihubmix_key
+# 或 ANTHROPIC_API_KEY=your_anthropic_key
+```
+
+多渠道模式：
+
+```env
+LLM_CHANNELS=deepseek,gemini
+LLM_DEEPSEEK_API_KEY=sk-xxx
+LLM_DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+LLM_DEEPSEEK_MODELS=deepseek-chat
+LLM_GEMINI_API_KEYS=key1,key2
+LLM_GEMINI_MODELS=gemini-2.5-flash
+```
+
+第三方 OpenAI 兼容代理：
+
+```env
+LLM_CHANNELS=my_proxy
+LLM_MY_PROXY_BASE_URL=https://your-proxy.example.com/v1
+LLM_MY_PROXY_API_KEY=sk-xxx
+LLM_MY_PROXY_MODELS=gpt-4o-mini,claude-3-5-sonnet
+LLM_MY_PROXY_PROTOCOL=openai
+```
+
+高级模式：
+
+```env
+LITELLM_CONFIG=./litellm_config.yaml
+```
+
+### 搜索与通知
+
+新闻搜索至少配置一个更好：
+
+```env
+TAVILY_API_KEYS=your_tavily_key
+# 或 BOCHA_API_KEYS=your_bocha_key
+# 或 SERPAPI_API_KEYS=your_serpapi_key
+```
+
+通知渠道按需配置：
+
+- 企业微信：`WECHAT_WEBHOOK_URL`
+- 飞书：`FEISHU_WEBHOOK_URL`
+- Telegram：`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`
+- Discord：`DISCORD_WEBHOOK_URL`
+- 邮件：`EMAIL_SENDER` + `EMAIL_PASSWORD`
+- 通用 Webhook：`CUSTOM_WEBHOOK_URLS`
+
+### 数据源配置
+
+```env
+EFINANCE_PRIORITY=0
+AKSHARE_PRIORITY=1
+TUSHARE_PRIORITY=2
+YFINANCE_PRIORITY=4
+REALTIME_SOURCE_PRIORITY=tencent,akshare_sina,efinance
+```
+
+补充经验：
+
+- 美股优先时可把 `YFINANCE_PRIORITY=0`
+- 东财限流或连接关闭时可尝试 `ENABLE_EASTMONEY_PATCH=true`
+- 有 Tushare 高积分账号时，可把 `tushare` 提到 `REALTIME_SOURCE_PRIORITY` 前面
+
+### Web 认证
+
+```env
+ADMIN_AUTH_ENABLED=true
+```
+
+首次访问时设置密码，可保护 Web 设置页中的敏感配置。
 
 ## 输出结构 (`AnalysisResult`)
 
@@ -111,3 +289,68 @@ if report:
 ```
 
 **参考:** [`perform_market_review`](./analyzer_service.py)
+
+## API 与 Web
+
+启动服务后：
+
+- Web 首页：`http://127.0.0.1:8000`
+- API 文档：`http://127.0.0.1:8000/docs`
+- 健康检查：`http://127.0.0.1:8000/api/health`
+
+常用 API：
+
+- `POST /api/v1/analysis/analyze`：触发分析
+- `GET /api/v1/history`：查询历史分析
+- `POST /api/v1/stocks/extract-from-image`：从图片识别股票
+- `POST /api/v1/stocks/parse-import`：解析导入文件/文本
+- `GET /api/v1/usage/summary`：LLM 用量统计
+- `POST /api/v1/backtest/run`：运行回测
+
+示例：
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/analysis/analyze" \
+  -H "Content-Type: application/json" \
+  -d '{"stock_codes": ["600519"], "async_mode": false}'
+```
+
+## Agent 策略问股
+
+启用方式：
+
+```env
+AGENT_MODE=true
+AGENT_SKILLS=bull_trend,ma_golden_cross,volume_breakout,shrink_pullback
+AGENT_MAX_STEPS=10
+```
+
+访问 `/chat` 页面即可使用策略问股。
+
+常见内置策略：
+
+- `bull_trend`
+- `ma_golden_cross`
+- `volume_breakout`
+- `shrink_pullback`
+- `bottom_volume`
+- `dragon_head`
+- `one_yang_three_yin`
+- `box_oscillation`
+- `chan_theory`
+- `wave_theory`
+- `emotion_cycle`
+
+## 验证
+
+```bash
+python test_env.py --config
+python -m py_compile main.py
+./scripts/ci_gate.sh
+```
+
+文档入口：
+
+- `docs/full-guide.md`
+- `docs/LLM_CONFIG_GUIDE.md`
+- `docs/FAQ.md`

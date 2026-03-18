@@ -9,7 +9,7 @@
 # 仅忽略仓库根目录下的临时 test_*.py 脚本；tests/ 目录下的单元测试需要纳入版本控制。
 /test_*.py
 !test_env.py
-
+stock_selector
 # Python
 __pycache__/
 *.py[cod]
