@@ -357,8 +357,23 @@ def run_agent_loop(
             final_content = response.content or ""
             is_error = response.provider == "error"
 
+            # 如果模型正常返回但内容为空，将其视为失败并给出明确错误，避免前端误判为「API Key 未配置」
+            if not is_error and not final_content:
+                error_msg = "LLM 返回空响应，请检查模型输出或提示词。"
+                return RunLoopResult(
+                    success=False,
+                    content="",
+                    tool_calls_log=tool_calls_log,
+                    total_steps=step + 1,
+                    total_tokens=total_tokens,
+                    provider=provider_used,
+                    models_used=models_used,
+                    error=error_msg,
+                    messages=messages,
+                )
+
             return RunLoopResult(
-                success=not is_error and bool(final_content),
+                success=not is_error,
                 content=final_content if not is_error else "",
                 tool_calls_log=tool_calls_log,
                 total_steps=step + 1,

@@ -354,3 +354,8 @@ python -m py_compile main.py
 - `docs/full-guide.md`
 - `docs/LLM_CONFIG_GUIDE.md`
 - `docs/FAQ.md`
+
+
+##验证查询市场服务信息
+
+.venv/bin/python scripts/test_tavily.py --query "比亚迪 股票 最新消息"
