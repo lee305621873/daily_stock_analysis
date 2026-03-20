@@ -493,6 +493,14 @@ body {
 .bg-elevated {
   background: var(--bg-elevated);
 }
+.bg-primary-gradient {
+  background: linear-gradient(
+    135deg,
+    var(--color-cyan) 0%,
+    #67e8f9 45%,
+    var(--color-cyan-dim) 100%
+  );
+}
 
 .border-accent {
   border-color: var(--border-accent);

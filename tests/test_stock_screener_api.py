@@ -1,0 +1,274 @@
+# -*- coding: utf-8 -*-
+"""API tests for stock screener endpoints."""
+
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+from fastapi.testclient import TestClient
+
+try:
+    import litellm  # noqa: F401
+except ModuleNotFoundError:
+    sys.modules["litellm"] = MagicMock()
+
+import src.auth as auth
+from api.app import create_app
+from api.v1.schemas.stocks import ScreenerTaskAccepted, ScreenerTaskStatusEnum
+from src.config import Config
+from src.storage import DatabaseManager
+
+
+def _reset_auth_globals() -> None:
+    auth._auth_enabled = None
+    auth._session_secret = None
+    auth._password_hash_salt = None
+    auth._password_hash_stored = None
+    auth._rate_limit = {}
+
+
+class StockScreenerApiTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        _reset_auth_globals()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.temp_dir.name)
+        self.env_path = self.data_dir / ".env"
+        self.db_path = self.data_dir / "stock_screener_api_test.db"
+        self.env_path.write_text(
+            "\n".join(
+                [
+                    "STOCK_LIST=600519",
+                    "GEMINI_API_KEY=test",
+                    "ADMIN_AUTH_ENABLED=false",
+                    f"DATABASE_PATH={self.db_path}",
+                ]
+            ) + "\n",
+            encoding="utf-8",
+        )
+
+        os.environ["ENV_FILE"] = str(self.env_path)
+        os.environ["DATABASE_PATH"] = str(self.db_path)
+        Config.reset_instance()
+        DatabaseManager.reset_instance()
+        self.client = TestClient(create_app(static_dir=self.data_dir / "empty-static"))
+
+    def tearDown(self) -> None:
+        DatabaseManager.reset_instance()
+        Config.reset_instance()
+        os.environ.pop("ENV_FILE", None)
+        os.environ.pop("DATABASE_PATH", None)
+        self.temp_dir.cleanup()
+
+    def test_indicator_catalog_endpoint(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.indicator_catalog.return_value = [
+                {
+                    "key": "RSI",
+                    "name": "RSI",
+                    "category": "swing",
+                    "params": [],
+                    "outputs": [{"key": "rsi", "label": "RSI"}],
+                    "operators": [">", "<"],
+                }
+            ]
+
+            response = self.client.get("/api/v1/stocks/screener/indicators")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["key"], "RSI")
+
+    def test_formula_function_catalog_endpoint(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.formula_function_catalog.return_value = [
+                {
+                    "name": "MA",
+                    "category": "trend",
+                    "summary": "Moving average",
+                    "signature": "MA(series, period)",
+                    "returns": "series",
+                    "examples": ["MA(CLOSE, 5)"],
+                    "params": [],
+                }
+            ]
+
+            response = self.client.get("/api/v1/stocks/screener/formula/functions")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["name"], "MA")
+
+    def test_formula_validate_endpoint(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.validate_formula.return_value = {
+                "valid": True,
+                "normalized_formula": "CLOSE > MA(CLOSE, 5)",
+                "referenced_fields": ["CLOSE"],
+                "functions": ["MA"],
+                "message": "公式校验通过",
+                "estimated_lookback": 250,
+                "warnings": [],
+            }
+
+            response = self.client.post(
+                "/api/v1/stocks/screener/formula/validate",
+                json={"formula": "CLOSE > MA(CLOSE, 5)"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["valid"])
+
+    def test_scan_endpoint_success(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.scan.return_value = {
+                "total": 1,
+                "results": [
+                    {
+                        "code": "AAPL",
+                        "name": "苹果",
+                        "last_close": 188.12,
+                        "data_source": "mock",
+                        "matched_conditions": ["RSI < 30"],
+                        "boards": [],
+                        "heat": 1.32,
+                    }
+                ],
+                "csv": None,
+            }
+
+            response = self.client.post(
+                "/api/v1/stocks/screener/scan",
+                json={
+                    "market": "us",
+                    "codes": ["AAPL"],
+                    "conditions": [
+                        {
+                            "indicator": "RSI",
+                            "params": {"period": 14},
+                            "output": "rsi",
+                            "operator": "<",
+                            "compare_to": {"type": "value", "value": 30},
+                            "logic_with_previous": "AND",
+                        }
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["results"][0]["code"], "AAPL")
+
+    def test_scan_endpoint_formula_mode_success(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.scan.return_value = {
+                "total": 1,
+                "results": [
+                    {
+                        "code": "AAPL",
+                        "name": "苹果",
+                        "last_close": 188.12,
+                        "data_source": "mock",
+                        "matched_conditions": ["趋势延续"],
+                        "boards": [],
+                        "heat": 1.32,
+                    }
+                ],
+                "csv": None,
+            }
+
+            response = self.client.post(
+                "/api/v1/stocks/screener/scan",
+                json={
+                    "mode": "formula",
+                    "formula": "CLOSE > MA(CLOSE, 5)",
+                    "formula_name": "趋势延续",
+                    "market": "us",
+                    "codes": ["AAPL"],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["results"][0]["matched_conditions"][0], "趋势延续")
+
+    def test_scan_endpoint_validation_error(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.scan.side_effect = ValueError("hk/us scan requires explicit codes")
+
+            response = self.client.post(
+                "/api/v1/stocks/screener/scan",
+                json={
+                    "market": "us",
+                    "conditions": [
+                        {
+                            "indicator": "RSI",
+                            "params": {"period": 14},
+                            "output": "rsi",
+                            "operator": "<",
+                            "compare_to": {"type": "value", "value": 30},
+                            "logic_with_previous": "AND",
+                        }
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        detail = response.json()
+        self.assertEqual(detail.get("error"), "validation_error")
+
+    def test_scan_endpoint_accepts_async_task(self) -> None:
+        accepted = ScreenerTaskAccepted(task_id="task-001", message="选股任务已提交")
+
+        with patch("api.v1.endpoints.stock_screener.get_stock_screener_task_queue") as queue_factory:
+            queue_factory.return_value.submit_task.return_value = accepted
+
+            response = self.client.post(
+                "/api/v1/stocks/screener/scan",
+                json={
+                    "market": "cn",
+                    "async_mode": True,
+                    "conditions": [
+                        {
+                            "indicator": "RSI",
+                            "params": {"period": 14},
+                            "output": "rsi",
+                            "operator": "<",
+                            "compare_to": {"type": "value", "value": 30},
+                            "logic_with_previous": "AND",
+                        }
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["task_id"], "task-001")
+        queue_factory.return_value.submit_task.assert_called_once()
+
+    def test_get_task_status_endpoint(self) -> None:
+        task_payload = {
+            "task_id": "task-001",
+            "market": "cn",
+            "status": ScreenerTaskStatusEnum.PROCESSING.value,
+            "progress": 35,
+            "scanned_count": 350,
+            "total_count": 1000,
+            "matched_count": 12,
+            "message": "正在扫描 350/1000，当前命中 12 条",
+            "created_at": "2026-03-20T10:00:00",
+            "started_at": "2026-03-20T10:00:01",
+            "completed_at": None,
+            "error": None,
+            "result": None,
+        }
+        task_record = SimpleNamespace(to_dict=lambda include_result=False: task_payload)
+
+        with patch("api.v1.endpoints.stock_screener.get_stock_screener_task_queue") as queue_factory:
+            queue_factory.return_value.get_task.return_value = task_record
+
+            response = self.client.get("/api/v1/stocks/screener/tasks/task-001")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["task_id"], "task-001")
+        self.assertEqual(response.json()["progress"], 35)
