@@ -72,6 +72,7 @@ class StockScreenerApiTestCase(unittest.TestCase):
                     "key": "RSI",
                     "name": "RSI",
                     "category": "swing",
+                    "summary": "衡量超买超卖",
                     "params": [],
                     "outputs": [{"key": "rsi", "label": "RSI"}],
                     "operators": [">", "<"],
@@ -82,6 +83,90 @@ class StockScreenerApiTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]["key"], "RSI")
+
+    def test_scope_catalog_endpoint(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.scope_catalog.return_value = [
+                {
+                    "key": "cn_semiconductor",
+                    "market": "cn",
+                    "label": "A 股半导体",
+                    "description": "半导体板块成分股",
+                    "kind": "board",
+                    "estimated_count": 132,
+                    "preview_codes": ["603986", "688981"],
+                    "board_name": "半导体",
+                    "board_type": "industry",
+                }
+            ]
+
+            response = self.client.get("/api/v1/stocks/screener/scopes", params={"market": "cn"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["key"], "cn_semiconductor")
+
+    def test_board_catalog_endpoint(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.board_catalog.return_value = [
+                {
+                    "market": "cn",
+                    "board_type": "industry",
+                    "board_name": "半导体",
+                    "label": "半导体",
+                    "estimated_count": 132,
+                    "tiers": [],
+                }
+            ]
+
+            response = self.client.get(
+                "/api/v1/stocks/screener/boards",
+                params={"market": "cn", "board_type": "industry"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["board_name"], "半导体")
+
+    def test_board_preview_endpoint(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.board_preview.return_value = {
+                "market": "cn",
+                "board_type": "industry",
+                "board_name": "半导体",
+                "estimated_count": 132,
+                "preview_codes": ["603986", "688981"],
+                "tiers": [],
+            }
+
+            response = self.client.get(
+                "/api/v1/stocks/screener/boards/preview",
+                params={"market": "cn", "board_type": "industry", "board_name": "半导体", "limit": 20},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["preview_codes"][0], "603986")
+
+    def test_board_constituents_endpoint(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.board_constituents.return_value = {
+                "market": "cn",
+                "board_type": "industry",
+                "board_name": "半导体",
+                "total": 2,
+                "source": "tushare",
+                "items": [
+                    {"code": "603986", "name": "兆易创新"},
+                    {"code": "688981", "name": "中芯国际"},
+                ],
+            }
+
+            response = self.client.get(
+                "/api/v1/stocks/screener/boards/constituents",
+                params={"market": "cn", "board_type": "industry", "board_name": "半导体"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["source"], "tushare")
+        self.assertEqual(response.json()["items"][0]["code"], "603986")
 
     def test_formula_function_catalog_endpoint(self) -> None:
         with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:

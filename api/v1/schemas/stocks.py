@@ -161,6 +161,19 @@ class ScreenerMode(str, Enum):
     FORMULA = "formula"
 
 
+class ScreenerScopeKind(str, Enum):
+    FULL_MARKET = "full_market"
+    PRESET_POOL = "preset_pool"
+    BOARD = "board"
+    BOARD_DYNAMIC = "board_dynamic"
+    CUSTOM_POOL = "custom_pool"
+
+
+class ScreenerBoardType(str, Enum):
+    INDUSTRY = "industry"
+    CONCEPT = "concept"
+
+
 class IndicatorParamMeta(BaseModel):
     name: str
     label: str
@@ -179,9 +192,65 @@ class IndicatorMeta(BaseModel):
     key: IndicatorKey
     name: str
     category: str
+    summary: Optional[str] = None
     params: List[IndicatorParamMeta] = Field(default_factory=list)
     outputs: List[IndicatorOutputMeta] = Field(default_factory=list)
     operators: List[str] = Field(default_factory=list)
+
+
+class ScreenerScopeOption(BaseModel):
+    key: str
+    market: MarketType
+    label: str
+    description: str
+    kind: ScreenerScopeKind
+    estimated_count: Optional[int] = None
+    preview_codes: List[str] = Field(default_factory=list)
+    board_name: Optional[str] = None
+    board_type: Optional[ScreenerBoardType] = None
+
+
+class ScreenerBoardTier(BaseModel):
+    key: str
+    label: str
+    count: int
+    codes: List[str] = Field(default_factory=list)
+
+
+class ScreenerBoardOption(BaseModel):
+    market: MarketType
+    board_type: ScreenerBoardType
+    board_name: str
+    label: str
+    estimated_count: Optional[int] = None
+    description: Optional[str] = None
+    tier_summary: Optional[str] = None
+    tiers: List[ScreenerBoardTier] = Field(default_factory=list)
+
+
+class ScreenerBoardPreview(BaseModel):
+    market: MarketType
+    board_type: ScreenerBoardType
+    board_name: str
+    estimated_count: Optional[int] = None
+    preview_codes: List[str] = Field(default_factory=list)
+    description: Optional[str] = None
+    tier_summary: Optional[str] = None
+    tiers: List[ScreenerBoardTier] = Field(default_factory=list)
+
+
+class ScreenerBoardConstituent(BaseModel):
+    code: str
+    name: Optional[str] = None
+
+
+class ScreenerBoardConstituentResponse(BaseModel):
+    market: MarketType
+    board_type: ScreenerBoardType
+    board_name: str
+    total: int
+    source: str
+    items: List[ScreenerBoardConstituent] = Field(default_factory=list)
 
 
 class CompareTo(BaseModel):
@@ -213,8 +282,12 @@ class ScreenerScanRequest(BaseModel):
     formula: Optional[str] = Field(default=None, description="Formula expression used when mode=formula")
     formula_name: Optional[str] = Field(default=None, description="Optional human-readable formula name")
     market: MarketType = Field(default=MarketType.CN, description="Universe market: cn | hk | us")
+    scope: Optional[str] = Field(default=None, description="Universe scope key returned by screener scope catalog")
     board_filters: Optional[List[str]] = Field(default=None)
+    board_name: Optional[str] = Field(default=None, description="Dynamic CN board name when scope requires board selection")
+    board_type: Optional[ScreenerBoardType] = Field(default=None, description="Dynamic CN board type: industry | concept")
     volume_heat_ratio: Optional[float] = Field(default=None)
+    scan_limit: Optional[int] = Field(default=None, ge=1, le=2000, description="Max candidate stocks to scan")
     limit: int = Field(default=200, ge=1, le=2000)
     offset: int = Field(default=0, ge=0)
     export_csv: bool = Field(default=False)
@@ -229,6 +302,7 @@ class ScreenerScanRequest(BaseModel):
         mode = values.get("mode") or ScreenerMode.CONDITION
         conditions = values.get("conditions") or []
         formula = (values.get("formula") or "").strip()
+        board_name = (values.get("board_name") or "").strip()
 
         if mode == ScreenerMode.FORMULA:
             if not formula:
@@ -237,6 +311,8 @@ class ScreenerScanRequest(BaseModel):
         else:
             if not conditions:
                 raise ValueError("conditions cannot be empty when mode=condition")
+        if board_name:
+            values["board_name"] = board_name
         return values
 
 

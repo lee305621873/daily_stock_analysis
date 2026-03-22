@@ -4,11 +4,12 @@ import { cn } from '../../utils/cn';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
+  labelSuffix?: React.ReactNode;
   hint?: string;
   error?: string;
 }
 
-export const Input = ({ label, hint, error, className = '', id, ...props }: InputProps) => {
+export const Input = ({ label, labelSuffix, hint, error, className = '', id, ...props }: InputProps) => {
   const generatedId = useId();
   const inputId = id ?? props.name ?? generatedId;
   const hintId = hint ? `${inputId}-hint` : undefined;
@@ -18,7 +19,12 @@ export const Input = ({ label, hint, error, className = '', id, ...props }: Inpu
 
   return (
     <div className="flex flex-col">
-      {label ? <label htmlFor={inputId} className="mb-2 text-sm font-medium text-foreground">{label}</label> : null}
+      {label ? (
+        <label htmlFor={inputId} className="mb-2 inline-flex items-center gap-2 text-sm font-medium text-foreground">
+          <span>{label}</span>
+          {labelSuffix}
+        </label>
+      ) : null}
       <input
         id={inputId}
         aria-describedby={describedBy}

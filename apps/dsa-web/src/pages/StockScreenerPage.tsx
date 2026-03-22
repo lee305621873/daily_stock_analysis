@@ -5,6 +5,9 @@ import type { ParsedApiError } from '../api/error';
 import { createParsedApiError, getParsedApiError } from '../api/error';
 import { ApiErrorAlert, AppPage, Badge, Button, Card, Input, Select, StickyActionBar } from '../components/common';
 import type {
+  ScreenerBoardOption,
+  ScreenerBoardPreview,
+  ScreenerBoardTier,
   FormulaFunctionMeta,
   FormulaValidationResponse,
   IndicatorKey,
@@ -15,19 +18,20 @@ import type {
   ScreenerCondition,
   ScreenerMode,
   ScreenerScanResponse,
+  ScreenerScopeOption,
   ScreenerTaskAccepted,
   ScreenerTaskInfo,
   ScreenerTaskStatusResponse,
 } from '../types/screener';
 
 const FALLBACK_INDICATORS: IndicatorMeta[] = [
-  { key: 'MA', name: 'MA 移动平均', category: '趋势', params: [{ name: 'period', label: '周期', type: 'int', default: 5 }], outputs: [{ key: 'ma', label: 'MA' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
-  { key: 'MACD', name: 'MACD 指标', category: '趋势', params: [{ name: 'fast', label: '快线', type: 'int', default: 12 }, { name: 'slow', label: '慢线', type: 'int', default: 26 }, { name: 'signal', label: '平滑', type: 'int', default: 9 }], outputs: [{ key: 'macd', label: 'Diff' }, { key: 'signal', label: 'Dea' }, { key: 'hist', label: '柱子' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
-  { key: 'RSI', name: 'RSI 相对强弱', category: '摆动', params: [{ name: 'period', label: '周期', type: 'int', default: 14 }], outputs: [{ key: 'rsi', label: 'RSI' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
-  { key: 'KDJ', name: 'KDJ 随机指标', category: '摆动', params: [{ name: 'period', label: '周期', type: 'int', default: 9 }, { name: 'k_smooth', label: 'K 平滑', type: 'int', default: 3 }, { name: 'd_smooth', label: 'D 平滑', type: 'int', default: 3 }], outputs: [{ key: 'k', label: 'K' }, { key: 'd', label: 'D' }, { key: 'j', label: 'J' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
-  { key: 'BOLL', name: 'BOLL 布林带', category: '通道', params: [{ name: 'period', label: '周期', type: 'int', default: 20 }, { name: 'multiplier', label: '倍数', type: 'float', default: 2 }], outputs: [{ key: 'upper', label: '上轨' }, { key: 'mid', label: '中轨' }, { key: 'lower', label: '下轨' }, { key: 'bandwidth', label: '带宽' }, { key: 'percent_b', label: '%B' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
-  { key: 'VOL', name: 'VOL 成交量', category: '能量', params: [{ name: 'period', label: '均量周期', type: 'int', default: 5 }], outputs: [{ key: 'volume', label: '量' }, { key: 'vol_ma', label: '均量' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
-  { key: 'OBV', name: 'OBV 能量潮', category: '能量', params: [], outputs: [{ key: 'obv', label: 'OBV' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
+  { key: 'MA', name: 'MA 移动平均', category: '趋势', summary: '用均价观察趋势方向，常用于看支撑、跌破和金叉/死叉。', params: [{ name: 'period', label: '周期', type: 'int', default: 5 }], outputs: [{ key: 'ma', label: 'MA' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
+  { key: 'MACD', name: 'MACD 指标', category: '趋势', summary: '适合观察趋势强弱和动量变化，常用来看零轴和柱体放大。', params: [{ name: 'fast', label: '快线', type: 'int', default: 12 }, { name: 'slow', label: '慢线', type: 'int', default: 26 }, { name: 'signal', label: '平滑', type: 'int', default: 9 }], outputs: [{ key: 'macd', label: 'Diff' }, { key: 'signal', label: 'Dea' }, { key: 'hist', label: '柱子' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
+  { key: 'RSI', name: 'RSI 相对强弱', category: '摆动', summary: '衡量超买超卖，常见阈值是 30 和 70。', params: [{ name: 'period', label: '周期', type: 'int', default: 14 }], outputs: [{ key: 'rsi', label: 'RSI' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
+  { key: 'KDJ', name: 'KDJ 随机指标', category: '摆动', summary: '适合找短线拐点，J 值最敏感，K/D 更平滑。', params: [{ name: 'period', label: '周期', type: 'int', default: 9 }, { name: 'k_smooth', label: 'K 平滑', type: 'int', default: 3 }, { name: 'd_smooth', label: 'D 平滑', type: 'int', default: 3 }], outputs: [{ key: 'k', label: 'K' }, { key: 'd', label: 'D' }, { key: 'j', label: 'J' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
+  { key: 'BOLL', name: 'BOLL 布林带', category: '通道', summary: '用上下轨判断波动区间，适合看突破、收口和回归均值。', params: [{ name: 'period', label: '周期', type: 'int', default: 20 }, { name: 'multiplier', label: '倍数', type: 'float', default: 2 }], outputs: [{ key: 'upper', label: '上轨' }, { key: 'mid', label: '中轨' }, { key: 'lower', label: '下轨' }, { key: 'bandwidth', label: '带宽' }, { key: 'percent_b', label: '%B' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
+  { key: 'VOL', name: 'VOL 成交量', category: '能量', summary: '比较当前成交量和均量，常用于判断放量突破或缩量整理。', params: [{ name: 'period', label: '均量周期', type: 'int', default: 5 }], outputs: [{ key: 'volume', label: '量' }, { key: 'vol_ma', label: '均量' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
+  { key: 'OBV', name: 'OBV 能量潮', category: '能量', summary: '把涨跌方向与成交量累计起来，适合看资金流入流出趋势。', params: [], outputs: [{ key: 'obv', label: 'OBV' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
 ];
 
 const FORMULA_TEMPLATES = [
@@ -116,6 +120,7 @@ const ConditionRow: React.FC<ConditionRowProps> = ({ metaList, value, onChange, 
         <Select
           className="xl:w-52"
           label="指标"
+          labelSuffix={meta?.summary ? <HelpHint content={meta.summary} /> : undefined}
           value={value.indicator}
           onChange={(next) => update({ indicator: next as IndicatorKey, params: {}, output: undefined })}
           options={metaList.map((item) => ({ value: item.key, label: item.name }))}
@@ -138,6 +143,7 @@ const ConditionRow: React.FC<ConditionRowProps> = ({ metaList, value, onChange, 
           <Select
             className="xl:w-40"
             label="输出"
+            labelSuffix={<HelpHint content="不同指标可能有多个输出值，例如 MACD 的 Diff、Dea、柱子。" />}
             value={value.output || meta.outputs[0].key}
             onChange={(next) => update({ output: next })}
             options={meta.outputs.map((output) => ({ value: output.key, label: output.label }))}
@@ -147,6 +153,7 @@ const ConditionRow: React.FC<ConditionRowProps> = ({ metaList, value, onChange, 
         <Select
           className="xl:w-40"
           label="比较"
+          labelSuffix={<HelpHint content="支持大于、小于、等于，以及 cross_up/cross_down 金叉死叉判断。" />}
           value={value.operator}
           onChange={(next) => update({ operator: next as Operator })}
           options={(meta?.operators || []).map((operator) => ({ value: operator, label: operator }))}
@@ -155,6 +162,7 @@ const ConditionRow: React.FC<ConditionRowProps> = ({ metaList, value, onChange, 
         <Select
           className="xl:w-40"
           label="右侧"
+          labelSuffix={<HelpHint content="阈值表示和固定数值比较；另一指标表示两个指标之间做对比。" />}
           value={value.compareTo.type}
           onChange={(next) => update({
             compareTo: next === 'indicator'
@@ -172,6 +180,7 @@ const ConditionRow: React.FC<ConditionRowProps> = ({ metaList, value, onChange, 
             <Select
               className="xl:w-52"
               label="对比指标"
+              labelSuffix={compareMeta?.summary ? <HelpHint content={compareMeta.summary} /> : undefined}
               value={value.compareTo.indicator || metaList[0]?.key || ''}
               onChange={(next) => update({ compareTo: { ...value.compareTo, indicator: next as IndicatorKey } })}
               options={metaList.map((item) => ({ value: item.key, label: item.name }))}
@@ -188,6 +197,7 @@ const ConditionRow: React.FC<ConditionRowProps> = ({ metaList, value, onChange, 
           <Input
             className="xl:w-40"
             label="阈值"
+            labelSuffix={<HelpHint content="这里填固定门槛值，例如 RSI 小于 30、量比大于 1.5。" />}
             type="number"
             value={value.compareTo.value ?? ''}
             onChange={(event) => update({ compareTo: { ...value.compareTo, value: Number(event.target.value) } })}
@@ -198,25 +208,62 @@ const ConditionRow: React.FC<ConditionRowProps> = ({ metaList, value, onChange, 
           删除
         </Button>
       </div>
+
+      {meta?.summary ? (
+        <div className="rounded-2xl border border-white/8 bg-elevated/30 px-4 py-3 text-xs text-secondary-text">
+          当前指标说明：{meta.summary}
+        </div>
+      ) : null}
     </Card>
   );
 };
 
 const MARKET_HINTS: Record<MarketType, string> = {
-  cn: 'A 股支持留空后扫描全市场，也支持手工限定股票池。',
-  hk: '港股当前支持自定义股票池扫描，例如 00700, 09988, 01810。',
-  us: '美股当前支持自定义股票池扫描，例如 AAPL, MSFT, NVDA。',
+  cn: 'A 股支持全市场、预置板块、真实行业/概念板块与自定义股票池。',
+  hk: '港股支持按预置板块、行业板块与自定义股票池扫描。',
+  us: '美股支持按预置板块、行业板块与自定义股票池扫描。',
 };
 
 const MARKET_PLACEHOLDERS: Record<MarketType, string> = {
-  cn: '留空表示 A 股全市场，或输入 600519,000001,300750',
+  cn: '请输入 600519,000001,300750',
   hk: '请输入港股代码，如 00700,09988,01810',
   us: '请输入美股代码，如 AAPL,MSFT,NVDA',
 };
 
+function buildFallbackScopes(market: MarketType): ScreenerScopeOption[] {
+  if (market === 'cn') {
+    return [{ key: 'all_market', market, label: 'A 股全市场', description: MARKET_HINTS.cn, kind: 'full_market', estimatedCount: null, previewCodes: [] }];
+  }
+  return [{ key: 'custom_pool', market, label: '自定义股票池', description: MARKET_HINTS[market], kind: 'custom_pool', estimatedCount: null, previewCodes: [] }];
+}
+
+function getMarketLabel(market: MarketType): string {
+  if (market === 'cn') return 'A股';
+  if (market === 'hk') return '港股';
+  return '美股';
+}
+
+const HelpHint: React.FC<{ content: string }> = ({ content }) => (
+  <span
+    title={content}
+    aria-label={content}
+    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/12 bg-white/6 text-[11px] font-semibold text-secondary-text cursor-help"
+  >
+    ?
+  </span>
+);
+
+const TIER_BADGE_VARIANTS: Array<'info' | 'warning' | 'success'> = ['warning', 'info', 'success'];
+
 const StockScreenerPage: React.FC = () => {
   const [indicators, setIndicators] = useState<IndicatorMeta[]>(FALLBACK_INDICATORS);
   const [formulaFunctions, setFormulaFunctions] = useState<FormulaFunctionMeta[]>([]);
+  const [scopeCatalog, setScopeCatalog] = useState<Record<MarketType, ScreenerScopeOption[]>>({
+    cn: buildFallbackScopes('cn'),
+    hk: buildFallbackScopes('hk'),
+    us: buildFallbackScopes('us'),
+  });
+  const [boardCatalog, setBoardCatalog] = useState<Record<string, ScreenerBoardOption[]>>({});
   const [conditions, setConditions] = useState<ScreenerCondition[]>([createDefaultCondition(FALLBACK_INDICATORS[0].key)]);
   const [scanMode, setScanMode] = useState<ScreenerMode>('formula');
   const [formulaName, setFormulaName] = useState(FORMULA_TEMPLATES[0].label);
@@ -224,10 +271,13 @@ const StockScreenerPage: React.FC = () => {
   const [formulaValidation, setFormulaValidation] = useState<FormulaValidationResponse | null>(null);
   const [formulaValidationError, setFormulaValidationError] = useState<ParsedApiError | null>(null);
   const [market, setMarket] = useState<MarketType>('cn');
+  const [scanScope, setScanScope] = useState('all_market');
+  const [selectedBoardName, setSelectedBoardName] = useState('');
+  const [boardSearchText, setBoardSearchText] = useState('');
+  const [boardPreview, setBoardPreview] = useState<ScreenerBoardPreview | null>(null);
   const [codesText, setCodesText] = useState('');
-  const [boardFilters, setBoardFilters] = useState('');
-  const [allowFullMarketScan, setAllowFullMarketScan] = useState(false);
   const [heat, setHeat] = useState('');
+  const [scanLimit, setScanLimit] = useState('');
   const [sortBy, setSortBy] = useState<'lastClose' | 'heat' | 'code' | 'name'>('lastClose');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [results, setResults] = useState<ScreenerScanResponse | null>(null);
@@ -243,23 +293,42 @@ const StockScreenerPage: React.FC = () => {
   useEffect(() => {
     const loadMetadata = async () => {
       try {
-        const [indicatorData, functionData] = await Promise.all([
+        const [indicatorData, functionData, scopeData] = await Promise.all([
           screenerApi.getIndicators(),
           screenerApi.getFormulaFunctions(),
+          screenerApi.getScopes(),
         ]);
         if (indicatorData.length > 0) {
           setIndicators(indicatorData);
           setConditions([createDefaultCondition(indicatorData[0].key)]);
         }
         setFormulaFunctions(functionData);
+        const groupedScopes: Record<MarketType, ScreenerScopeOption[]> = {
+          cn: scopeData.filter((item) => item.market === 'cn'),
+          hk: scopeData.filter((item) => item.market === 'hk'),
+          us: scopeData.filter((item) => item.market === 'us'),
+        };
+        setScopeCatalog({
+          cn: groupedScopes.cn.length ? groupedScopes.cn : buildFallbackScopes('cn'),
+          hk: groupedScopes.hk.length ? groupedScopes.hk : buildFallbackScopes('hk'),
+          us: groupedScopes.us.length ? groupedScopes.us : buildFallbackScopes('us'),
+        });
         setMetadataWarning(null);
       } catch (error) {
         console.error('Failed to load screener metadata:', error);
-        setMetadataWarning('指标或公式元数据加载失败，已回退为本地默认配置。');
+        setMetadataWarning('指标、公式或扫描范围元数据加载失败，已回退为本地默认配置。');
       }
     };
     void loadMetadata();
   }, []);
+
+  useEffect(() => {
+    const availableScopes = scopeCatalog[market] || [];
+    if (!availableScopes.length) return;
+    if (!availableScopes.some((item) => item.key === scanScope)) {
+      setScanScope(availableScopes[0].key);
+    }
+  }, [market, scanScope, scopeCatalog]);
 
   const syncTaskStatus = async (taskId: string) => {
     const status = await screenerApi.getTaskStatus(taskId);
@@ -410,7 +479,6 @@ const StockScreenerPage: React.FC = () => {
   };
 
   const handleScan = async () => {
-    const codes = parseCodes(codesText);
     const trimmedFormula = formulaText.trim();
 
     if (scanMode === 'formula' && !trimmedFormula) {
@@ -431,25 +499,23 @@ const StockScreenerPage: React.FC = () => {
       }
     }
 
-    if (market !== 'cn' && codes.length === 0) {
+    if (isCustomPool && effectiveCodes.length === 0) {
       setPageError(createParsedApiError({
         title: '股票池不能为空',
-        message: '港股和美股扫描需要先填写自定义股票池代码',
+        message: `当前已切换到“自定义股票池”，请先填写${market === 'cn' ? 'A 股' : market === 'hk' ? '港股' : '美股'}代码`,
         category: 'missing_params',
       }));
       return;
     }
 
-    if (market === 'cn' && codes.length === 0 && !allowFullMarketScan) {
+    if (isDynamicBoardScope && !selectedBoardName.trim()) {
       setPageError(createParsedApiError({
-        title: '请确认扫描范围',
-        message: 'A 股全市场扫描耗时较长。请先填写股票池，或勾选“允许全市场扫描（较慢）”后再开始选股。',
+        title: '板块未选择',
+        message: `当前扫描范围需要先选择一个${getMarketLabel(market)}板块，才能开始扫描。`,
         category: 'missing_params',
       }));
       return;
     }
-
-    const shouldRunAsync = market === 'cn' && codes.length === 0 && allowFullMarketScan;
 
     setIsLoading(true);
     setPageError(null);
@@ -466,15 +532,16 @@ const StockScreenerPage: React.FC = () => {
         formula: scanMode === 'formula' ? trimmedFormula : undefined,
         formulaName: scanMode === 'formula' ? formulaName.trim() || undefined : undefined,
         market,
-        boardFilters: market === 'cn' && boardFilters
-          ? boardFilters.split(',').map((item) => item.trim()).filter(Boolean)
-          : undefined,
+        scope: activeScope?.key,
+        boardName: isDynamicBoardScope ? selectedBoardName.trim() : undefined,
+        boardType: isDynamicBoardScope ? activeBoardType || undefined : undefined,
         volumeHeatRatio: heat ? Number(heat) : undefined,
         exportCsv: true,
         sortBy,
         sortDir,
         limit: 200,
-        codes: codes.length > 0 ? codes : undefined,
+        scanLimit: scanLimit ? Number(scanLimit) : undefined,
+        codes: effectiveCodes.length > 0 ? effectiveCodes : undefined,
         asyncMode: shouldRunAsync,
       });
 
@@ -515,6 +582,118 @@ const StockScreenerPage: React.FC = () => {
     return <Badge variant="warning">排队中</Badge>;
   }, [taskInfo]);
 
+  const scopeOptions = useMemo(() => scopeCatalog[market] || [], [market, scopeCatalog]);
+
+  const activeScope = useMemo(
+    () => scopeOptions.find((item) => item.key === scanScope) ?? scopeOptions[0],
+    [scanScope, scopeOptions],
+  );
+
+  const activeBoardType = activeScope?.boardType || null;
+  const activeBoardCatalogKey = activeBoardType ? `${market}:${activeBoardType}` : null;
+  const isCustomPool = activeScope?.kind === 'custom_pool';
+  const isDynamicBoardScope = activeScope?.kind === 'board_dynamic';
+  const isPresetBoardScope = activeScope?.kind === 'board' && market === 'cn' && !!activeScope?.boardName && !!activeScope?.boardType;
+  const previewBoardName = isDynamicBoardScope ? selectedBoardName : (isPresetBoardScope ? activeScope?.boardName || '' : '');
+  const previewBoardType = isDynamicBoardScope || isPresetBoardScope ? activeBoardType : null;
+  const boardOptions = useMemo(
+    () => (activeBoardCatalogKey ? (boardCatalog[activeBoardCatalogKey] || []) : []),
+    [activeBoardCatalogKey, boardCatalog],
+  );
+  const filteredBoardOptions = useMemo(() => {
+    if (!boardSearchText.trim()) {
+      return boardOptions.slice(0, 200);
+    }
+    const keyword = boardSearchText.trim().toLowerCase();
+    return boardOptions.filter((item) => item.label.toLowerCase().includes(keyword)).slice(0, 200);
+  }, [boardOptions, boardSearchText]);
+  const selectedBoardOption = boardOptions.find((item) => item.boardName === selectedBoardName) || null;
+  const previewCodes = isDynamicBoardScope || isPresetBoardScope
+    ? (boardPreview?.previewCodes ?? activeScope?.previewCodes ?? [])
+    : (activeScope?.previewCodes ?? []);
+  const effectiveCodes = isCustomPool ? parseCodes(codesText) : [];
+  const shouldRunAsync = market === 'cn' && activeScope?.kind === 'full_market';
+  const effectiveEstimatedCount = isDynamicBoardScope || isPresetBoardScope
+    ? (boardPreview?.estimatedCount ?? selectedBoardOption?.estimatedCount ?? null)
+    : (activeScope?.estimatedCount ?? null);
+  const dynamicBoardDescription = boardPreview?.description || selectedBoardOption?.description || activeScope?.description || '';
+  const dynamicBoardTierSummary = boardPreview?.tierSummary || selectedBoardOption?.tierSummary || '';
+  const dynamicBoardTiers: ScreenerBoardTier[] = boardPreview?.tiers?.length
+    ? boardPreview.tiers
+    : (selectedBoardOption?.tiers ?? []);
+  const poolPreview = isCustomPool ? codesText : previewCodes.join(', ');
+  const poolHint = isCustomPool
+    ? MARKET_HINTS[market]
+    : isDynamicBoardScope
+      ? selectedBoardName
+        ? `当前板块：${selectedBoardName}。${dynamicBoardDescription || '预览仅展示前若干只代码，实际扫描使用完整板块股票池。'}${dynamicBoardTierSummary ? ` 分层：${dynamicBoardTierSummary}。` : ''}`
+        : `请先选择一个${getMarketLabel(market)}${activeBoardType === 'concept' ? '概念' : '行业'}板块，随后会展示成分股预览。`
+      : isPresetBoardScope
+        ? `当前范围：${activeScope?.label}。${dynamicBoardDescription || '会优先加载真实板块成分股预览；如果实时板块接口失败，则回退到维护清单。'}`
+      : activeScope?.description || MARKET_HINTS[market];
+
+  useEffect(() => {
+    if (!isDynamicBoardScope || !activeBoardType || !activeBoardCatalogKey) {
+      return;
+    }
+    if (boardCatalog[activeBoardCatalogKey]?.length) {
+      return;
+    }
+
+    let cancelled = false;
+    const loadBoards = async () => {
+      try {
+        const boards = await screenerApi.getBoards(market, activeBoardType);
+        if (!cancelled) {
+          setBoardCatalog((previous) => ({ ...previous, [activeBoardCatalogKey]: boards }));
+        }
+      } catch (error) {
+        console.error('Failed to load screener boards:', error);
+        if (!cancelled) {
+          setMetadataWarning(`${getMarketLabel(market)}板块目录加载失败，已保留预置板块范围。`);
+        }
+      }
+    };
+    void loadBoards();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBoardCatalogKey, activeBoardType, boardCatalog, isDynamicBoardScope, market]);
+
+  useEffect(() => {
+    setSelectedBoardName('');
+    setBoardSearchText('');
+    setBoardPreview(null);
+  }, [market, scanScope]);
+
+  useEffect(() => {
+    if (!previewBoardType || !previewBoardName) {
+      setBoardPreview(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadBoardPreview = async () => {
+      try {
+        const preview = await screenerApi.getBoardPreview(market, previewBoardType, previewBoardName, 20);
+        if (!cancelled) {
+          setBoardPreview(preview);
+        }
+      } catch (error) {
+        console.error('Failed to load screener board preview:', error);
+        if (!cancelled) {
+          setBoardPreview(null);
+        }
+      }
+    };
+    void loadBoardPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [market, previewBoardName, previewBoardType]);
+
   const formulaSummary = useMemo(() => {
     if (!formulaValidation) return null;
     return `${formulaValidation.message}，预计至少加载 ${formulaValidation.estimatedLookback} 个交易日`;
@@ -528,7 +707,7 @@ const StockScreenerPage: React.FC = () => {
             <span className="label-uppercase">Stock Screener</span>
             <h1 className="text-2xl font-semibold text-white">技术指标选股</h1>
             <p className="max-w-3xl text-sm text-secondary-text">
-              在主 Web 里直接按 A 股、港股、美股做条件选股或公式选股。A 股全市场扫描会自动切到后台任务，并实时回传进度。
+              在主 Web 里直接按 A 股、港股、美股做条件选股或公式选股。现在支持按市场板块快速切换扫描范围，并可用扫描上限控制样本数量。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -578,17 +757,33 @@ const StockScreenerPage: React.FC = () => {
         </Card>
       ) : null}
 
-      <Card title="扫描配置" subtitle="配置市场、股票池与扫描模式">
-        <div className="grid gap-4 lg:grid-cols-[220px_220px_minmax(0,1fr)]">
+      <Card title="扫描配置" subtitle="配置市场、板块范围、股票池与扫描模式">
+        <div className="grid gap-4 lg:grid-cols-[220px_220px_220px_minmax(0,1fr)]">
           <Select
             label="市场"
             value={market}
-            onChange={(next) => setMarket(next as MarketType)}
+            labelSuffix={<HelpHint content="扫描范围选项由后端返回；A 股可用真实板块成分股，港股和美股可用后端维护的行业代表池。" />}
+            onChange={(next) => {
+              const nextMarket = next as MarketType;
+              setMarket(nextMarket);
+              setScanScope((scopeCatalog[nextMarket] || buildFallbackScopes(nextMarket))[0]?.key || 'custom_pool');
+              setPageError(null);
+            }}
             options={[
               { value: 'cn', label: 'A 股' },
               { value: 'hk', label: '港股' },
               { value: 'us', label: '美股' },
             ]}
+          />
+          <Select
+            label="扫描范围"
+            labelSuffix={<HelpHint content="扫描范围由后端维护；A 股支持真实行业/概念板块，港股和美股支持后端维护的行业板块代表池。" />}
+            value={activeScope?.key || ''}
+            onChange={(next) => {
+              setScanScope(next);
+              setPageError(null);
+            }}
+            options={scopeOptions.map((item) => ({ value: item.key, label: item.label }))}
           />
           <Select
             label="选股模式"
@@ -605,49 +800,120 @@ const StockScreenerPage: React.FC = () => {
           />
 
           <div className="flex flex-col">
-            <label htmlFor="screener-codes" className="mb-2 text-sm font-medium text-foreground">自定义股票池</label>
+            <label htmlFor="screener-codes" className="mb-2 inline-flex items-center gap-2 text-sm font-medium text-foreground">
+              <span>{isCustomPool ? '自定义股票池' : '范围预览'}</span>
+              <HelpHint content={isCustomPool ? '支持逗号、空格、换行分隔股票代码。' : '这里只展示后端返回的前若干只预览代码；动态板块范围会按完整股票池扫描。'} />
+            </label>
             <textarea
               id="screener-codes"
-              value={codesText}
+              value={poolPreview}
               onChange={(event) => setCodesText(event.target.value)}
-              placeholder={MARKET_PLACEHOLDERS[market]}
+              placeholder={
+                isCustomPool
+                  ? MARKET_PLACEHOLDERS[market]
+                  : isDynamicBoardScope
+                    ? '选择具体板块后，这里会展示成分股预览'
+                    : '这里展示预览代码；实际范围由后端决定，无需手动填写'
+              }
               rows={4}
+              disabled={!isCustomPool}
               className="min-h-[120px] w-full rounded-xl border border-white/10 bg-card px-4 py-3 text-sm text-foreground shadow-soft-card transition-all placeholder:text-muted-text focus:border-cyan/40 focus:outline-none focus:ring-4 focus:ring-cyan/15 hover:border-white/18"
             />
-            <p className="mt-2 text-xs text-secondary-text">{MARKET_HINTS[market]}</p>
-            {market === 'cn' ? (
-              <label className="mt-3 inline-flex items-center gap-3 rounded-xl border border-white/8 bg-card/60 px-3 py-2 text-sm text-secondary-text">
-                <input
-                  type="checkbox"
-                  checked={allowFullMarketScan}
-                  onChange={(event) => setAllowFullMarketScan(event.target.checked)}
-                  className="h-4 w-4 rounded border-white/10 bg-card text-cyan accent-cyan"
-                />
-                <span>允许全市场扫描（较慢）</span>
-              </label>
+            <p className="mt-2 text-xs text-secondary-text">{poolHint}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge variant={isCustomPool ? 'warning' : 'info'}>
+                {isCustomPool
+                  ? '手工输入股票池'
+                  : effectiveEstimatedCount
+                    ? `预计 ${effectiveEstimatedCount} 只成分股`
+                    : `预览 ${previewCodes.length} 只股票`}
+              </Badge>
+              {shouldRunAsync ? <Badge variant="warning">A 股全市场会自动后台扫描</Badge> : null}
+              {isDynamicBoardScope || isPresetBoardScope ? <Badge variant="info">{market === 'cn' ? '真实板块成分股' : '行业代表池'}</Badge> : null}
+              {isDynamicBoardScope && dynamicBoardTierSummary ? <Badge variant="warning">{dynamicBoardTierSummary}</Badge> : null}
+            </div>
+            {isDynamicBoardScope && selectedBoardName && dynamicBoardTiers.length ? (
+              <div className="mt-4 rounded-2xl border border-white/8 bg-elevated/30 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-white">板块分层明细</p>
+                    <p className="mt-1 text-xs text-secondary-text">
+                      当前板块按后端维护的代表池分为龙头 / 中军 / 弹性三层，便于快速理解扫描覆盖。
+                    </p>
+                  </div>
+                  {dynamicBoardTierSummary ? <Badge variant="info">{dynamicBoardTierSummary}</Badge> : null}
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                  {dynamicBoardTiers.map((tier, index) => (
+                    <div key={`${tier.key}-${tier.label}`} className="rounded-2xl border border-white/8 bg-card/60 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-white">{tier.label}</span>
+                        <Badge variant={TIER_BADGE_VARIANTS[index % TIER_BADGE_VARIANTS.length]}>
+                          {tier.count || tier.codes.length} 只
+                        </Badge>
+                      </div>
+                      <p className="mt-2 text-xs leading-6 text-secondary-text">
+                        {tier.codes.length ? tier.codes.join('、') : '暂无成分股'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : null}
           </div>
         </div>
 
+        {isDynamicBoardScope ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+            <Input
+              label="搜索板块"
+              labelSuffix={<HelpHint content={`输入关键字快速过滤${getMarketLabel(market)}板块目录，例如 半导体、创新药、金融。`} />}
+              value={boardSearchText}
+              onChange={(event) => setBoardSearchText(event.target.value)}
+              placeholder={activeBoardType === 'concept' ? '如 人工智能、算力租赁、创新药' : '如 半导体、金融、消费零售'}
+              hint={market === 'cn' ? '目录来自实时板块接口。' : '目录来自后端维护的行业代表池，后续可继续扩展数据源。'}
+            />
+            <Select
+              label={activeBoardType === 'industry' ? '具体行业板块' : '具体概念板块'}
+              labelSuffix={<HelpHint content={market === 'cn' ? '选择后会自动加载该板块的真实成分股预览；实际扫描会使用完整名单。' : '选择后会自动加载该行业池预览；实际扫描会使用完整代表池。'} />}
+              value={selectedBoardName}
+              onChange={(next) => {
+                setSelectedBoardName(next);
+                setPageError(null);
+              }}
+              options={filteredBoardOptions.map((item) => ({
+                value: item.boardName,
+                label: item.estimatedCount ? `${item.label}（约 ${item.estimatedCount} 只）` : item.label,
+              }))}
+              placeholder={filteredBoardOptions.length ? '请选择具体板块' : '暂无匹配板块'}
+            />
+          </div>
+        ) : null}
+
         <div className="mt-5 grid gap-4 lg:grid-cols-4">
           <Input
-            label="板块过滤"
-            value={boardFilters}
-            onChange={(event) => setBoardFilters(event.target.value)}
-            placeholder="如 半导体,算力"
-            disabled={market !== 'cn'}
-            hint={market === 'cn' ? '仅 A 股支持按板块过滤。' : '港股和美股会忽略板块过滤。'}
-          />
-          <Input
             label="量能热度 >="
+            labelSuffix={<HelpHint content="热度 = 最新成交量 / 近 20 日均量；大于 1 表示近期成交量高于常态。" />}
             type="number"
             value={heat}
             onChange={(event) => setHeat(event.target.value)}
             placeholder="如 1.5"
             hint="最新成交量 / 近 20 日均量。"
           />
+          <Input
+            label="扫描上限"
+            labelSuffix={<HelpHint content="限制参与扫描的股票数量，适合控制全市场扫描耗时；结果展示数量仍按 200 条返回。" />}
+            type="number"
+            min={1}
+            max={2000}
+            value={scanLimit}
+            onChange={(event) => setScanLimit(event.target.value)}
+            placeholder={shouldRunAsync ? '如 300' : '可选'}
+            hint={shouldRunAsync ? 'A 股全市场建议设置一个上限，减少后台扫描耗时。' : '留空表示按当前范围全部扫描。'}
+          />
           <Select
             label="排序字段"
+            labelSuffix={<HelpHint content="决定命中结果最终展示顺序；热度字段为空时会按 0 处理。" />}
             value={sortBy}
             onChange={(next) => setSortBy(next as 'lastClose' | 'heat' | 'code' | 'name')}
             options={[
@@ -659,6 +925,7 @@ const StockScreenerPage: React.FC = () => {
           />
           <Select
             label="排序方向"
+            labelSuffix={<HelpHint content="降序更适合先看价格/热度高的标的；升序适合找低位或代码顺序。" />}
             value={sortDir}
             onChange={(next) => setSortDir(next as 'asc' | 'desc')}
             options={[
@@ -666,6 +933,22 @@ const StockScreenerPage: React.FC = () => {
               { value: 'asc', label: '升序' },
             ]}
           />
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-white/8 bg-elevated/30 px-4 py-3 text-sm text-secondary-text">
+          当前范围：<span className="text-white">{activeScope?.label}</span>
+          {' · '}
+          {isCustomPool
+            ? '将按你输入的自定义股票池扫描。'
+            : isDynamicBoardScope
+              ? selectedBoardName
+                ? `将按 ${selectedBoardName} 的完整股票池扫描${effectiveEstimatedCount ? `（约 ${effectiveEstimatedCount} 只）` : ''}。`
+                : '请先从板块目录中选择一个具体板块。'
+            : isPresetBoardScope
+              ? `将按 ${activeScope?.boardName} 的完整股票池扫描${effectiveEstimatedCount ? `（约 ${effectiveEstimatedCount} 只）` : ''}；实时板块接口失败时会回退到维护清单。`
+            : shouldRunAsync
+              ? '将扫描 A 股全市场，并自动转到后台任务显示进度。'
+              : `当前仅预览前 ${previewCodes.length} 只代码，实际会按后端维护的完整范围扫描${effectiveEstimatedCount ? `（约 ${effectiveEstimatedCount} 只）` : ''}。`}
         </div>
       </Card>
 
@@ -783,9 +1066,9 @@ const StockScreenerPage: React.FC = () => {
         <>
           <StickyActionBar className="top-20 bottom-auto">
             <div className="mr-auto flex flex-col gap-1 px-1">
-              <span className="text-sm font-medium text-white">先点这里开始选股</span>
+              <span className="text-sm font-medium text-white">按当前范围开始选股</span>
               <span className="text-xs text-secondary-text">
-                当前 {conditions.length} 个条件，{market === 'cn' ? 'A 股可直接扫描' : '港股/美股请先填写股票池'}
+                当前 {conditions.length} 个条件，范围为 {activeScope?.label}{scanLimit ? `，扫描上限 ${scanLimit} 只` : ''}
               </span>
             </div>
             <Button type="button" variant="secondary" onClick={handleAddCondition}>
@@ -817,7 +1100,7 @@ const StockScreenerPage: React.FC = () => {
           <div className="mr-auto flex flex-col gap-1 px-1">
             <span className="text-sm font-medium text-white">默认公式选股，开始前会自动校验公式</span>
             <span className="text-xs text-secondary-text">
-              当前为公式模式，支持一套公式复用到 A 股、港股、美股。
+              当前为公式模式，范围为 {activeScope?.label}{scanLimit ? `，扫描上限 ${scanLimit} 只` : ''}。
             </span>
           </div>
           <Button type="button" variant="secondary" onClick={handleValidateFormula} isLoading={isValidatingFormula} loadingText="校验中...">
@@ -863,7 +1146,9 @@ const StockScreenerPage: React.FC = () => {
             <Badge variant={scanMode === 'formula' ? 'info' : 'warning'}>
               {scanMode === 'formula' ? '当前为公式模式' : '当前为条件模式'}
             </Badge>
-            {market !== 'cn' ? <Badge variant="warning">当前为自定义股票池扫描</Badge> : null}
+            <Badge variant={isCustomPool ? 'warning' : 'info'}>
+              {isCustomPool ? '当前为自定义股票池扫描' : `当前范围：${activeScope?.label}`}
+            </Badge>
           </div>
         </div>
 

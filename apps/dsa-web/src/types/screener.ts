@@ -3,6 +3,8 @@ export type Operator = '>' | '>=' | '<' | '<=' | '=' | 'cross_up' | 'cross_down'
 export type LogicOp = 'AND' | 'OR';
 export type MarketType = 'cn' | 'hk' | 'us';
 export type ScreenerMode = 'condition' | 'formula';
+export type ScreenerScopeKind = 'full_market' | 'preset_pool' | 'board' | 'board_dynamic' | 'custom_pool';
+export type ScreenerBoardType = 'industry' | 'concept';
 export type ScreenerTaskStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export type ScreenerTaskEventType =
   | 'connected'
@@ -31,6 +33,7 @@ export interface IndicatorMeta {
   key: IndicatorKey;
   name: string;
   category: string;
+  summary?: string;
   params: IndicatorParamMeta[];
   outputs: IndicatorOutputMeta[];
   operators: Operator[];
@@ -59,8 +62,12 @@ export interface ScreenerScanRequest {
   formula?: string;
   formulaName?: string;
   market?: MarketType;
+  scope?: string;
   boardFilters?: string[];
+  boardName?: string;
+  boardType?: ScreenerBoardType;
   volumeHeatRatio?: number;
+  scanLimit?: number;
   limit?: number;
   offset?: number;
   exportCsv?: boolean;
@@ -69,6 +76,61 @@ export interface ScreenerScanRequest {
   sortBy?: 'lastClose' | 'heat' | 'code' | 'name';
   sortDir?: 'asc' | 'desc';
   asyncMode?: boolean;
+}
+
+export interface ScreenerScopeOption {
+  key: string;
+  market: MarketType;
+  label: string;
+  description: string;
+  kind: ScreenerScopeKind;
+  estimatedCount?: number | null;
+  previewCodes: string[];
+  boardName?: string | null;
+  boardType?: ScreenerBoardType | null;
+}
+
+export interface ScreenerBoardTier {
+  key: string;
+  label: string;
+  count: number;
+  codes: string[];
+}
+
+export interface ScreenerBoardOption {
+  market: MarketType;
+  boardType: ScreenerBoardType;
+  boardName: string;
+  label: string;
+  estimatedCount?: number | null;
+  description?: string | null;
+  tierSummary?: string | null;
+  tiers?: ScreenerBoardTier[] | null;
+}
+
+export interface ScreenerBoardPreview {
+  market: MarketType;
+  boardType: ScreenerBoardType;
+  boardName: string;
+  estimatedCount?: number | null;
+  previewCodes: string[];
+  description?: string | null;
+  tierSummary?: string | null;
+  tiers?: ScreenerBoardTier[] | null;
+}
+
+export interface ScreenerBoardConstituent {
+  code: string;
+  name?: string | null;
+}
+
+export interface ScreenerBoardConstituentResponse {
+  market: MarketType;
+  boardType: ScreenerBoardType;
+  boardName: string;
+  total: number;
+  source: string;
+  items: ScreenerBoardConstituent[];
 }
 
 export interface ScreenerScanResultItem {

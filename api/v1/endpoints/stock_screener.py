@@ -19,8 +19,13 @@ from api.v1.schemas.stocks import (
     FormulaValidationResponse,
     IndicatorMeta,
     MarketType,
+    ScreenerBoardConstituentResponse,
+    ScreenerBoardOption,
+    ScreenerBoardPreview,
+    ScreenerBoardType,
     ScreenerScanRequest,
     ScreenerScanResponse,
+    ScreenerScopeOption,
     ScreenerTaskAccepted,
     ScreenerTaskStatusResponse,
 )
@@ -30,6 +35,117 @@ from src.services.stock_screener_task_queue import get_stock_screener_task_queue
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get(
+    "/scopes",
+    response_model=list[ScreenerScopeOption],
+    responses={
+        200: {"description": "Scope metadata"},
+        500: {"description": "Server error", "model": ErrorResponse},
+    },
+    summary="Get screener scan scope metadata",
+)
+def list_scope_catalog(market: MarketType | None = None):
+    try:
+        service = StockScreenerService()
+        return service.scope_catalog(market)
+    except Exception as exc:
+        logger.error("Failed to load stock screener scope catalog: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": "加载选股扫描范围失败"},
+        )
+
+
+@router.get(
+    "/boards",
+    response_model=list[ScreenerBoardOption],
+    responses={
+        200: {"description": "Board metadata"},
+        400: {"description": "Invalid request", "model": ErrorResponse},
+        500: {"description": "Server error", "model": ErrorResponse},
+    },
+    summary="Get screener board catalog",
+)
+def list_board_catalog(market: MarketType, board_type: ScreenerBoardType):
+    try:
+        service = StockScreenerService()
+        return service.board_catalog(market, board_type)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "validation_error", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.error("Failed to load stock screener board catalog: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": "加载板块目录失败"},
+        )
+
+
+@router.get(
+    "/boards/preview",
+    response_model=ScreenerBoardPreview,
+    responses={
+        200: {"description": "Board preview"},
+        400: {"description": "Invalid request", "model": ErrorResponse},
+        500: {"description": "Server error", "model": ErrorResponse},
+    },
+    summary="Preview screener board constituents",
+)
+def preview_board_constituents(
+    market: MarketType,
+    board_type: ScreenerBoardType,
+    board_name: str,
+    limit: int = 20,
+):
+    try:
+        service = StockScreenerService()
+        return service.board_preview(market, board_type, board_name, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "validation_error", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.error("Failed to preview stock screener board constituents: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": "加载板块成分股预览失败"},
+        )
+
+
+@router.get(
+    "/boards/constituents",
+    response_model=ScreenerBoardConstituentResponse,
+    responses={
+        200: {"description": "Full board constituents"},
+        400: {"description": "Invalid request", "model": ErrorResponse},
+        500: {"description": "Server error", "model": ErrorResponse},
+    },
+    summary="Get full screener board constituents",
+)
+def list_board_constituents(
+    market: MarketType,
+    board_type: ScreenerBoardType,
+    board_name: str,
+):
+    try:
+        service = StockScreenerService()
+        return service.board_constituents(market, board_type, board_name)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "validation_error", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.error("Failed to load full stock screener board constituents: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": "加载完整板块成分股失败"},
+        )
 
 
 @router.get(

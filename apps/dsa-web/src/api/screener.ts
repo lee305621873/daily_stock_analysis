@@ -1,16 +1,48 @@
 import apiClient from './index';
 import { toCamelCase } from './utils';
 import type {
+  ScreenerBoardConstituentResponse,
+  ScreenerBoardOption,
+  ScreenerBoardPreview,
   FormulaFunctionMeta,
   FormulaValidationResponse,
   IndicatorMeta,
   ScreenerScanRequest,
   ScreenerScanResponse,
+  ScreenerScopeOption,
   ScreenerTaskAccepted,
   ScreenerTaskStatusResponse,
 } from '../types/screener';
 
 export const screenerApi = {
+  async getScopes(market?: string): Promise<ScreenerScopeOption[]> {
+    const response = await apiClient.get('/api/v1/stocks/screener/scopes', {
+      params: market ? { market } : undefined,
+    });
+    return toCamelCase<ScreenerScopeOption[]>(response.data);
+  },
+
+  async getBoards(market: string, boardType: string): Promise<ScreenerBoardOption[]> {
+    const response = await apiClient.get('/api/v1/stocks/screener/boards', {
+      params: { market, board_type: boardType },
+    });
+    return toCamelCase<ScreenerBoardOption[]>(response.data);
+  },
+
+  async getBoardPreview(market: string, boardType: string, boardName: string, limit = 20): Promise<ScreenerBoardPreview> {
+    const response = await apiClient.get('/api/v1/stocks/screener/boards/preview', {
+      params: { market, board_type: boardType, board_name: boardName, limit },
+    });
+    return toCamelCase<ScreenerBoardPreview>(response.data);
+  },
+
+  async getBoardConstituents(market: string, boardType: string, boardName: string): Promise<ScreenerBoardConstituentResponse> {
+    const response = await apiClient.get('/api/v1/stocks/screener/boards/constituents', {
+      params: { market, board_type: boardType, board_name: boardName },
+    });
+    return toCamelCase<ScreenerBoardConstituentResponse>(response.data);
+  },
+
   async getIndicators(): Promise<IndicatorMeta[]> {
     const response = await apiClient.get('/api/v1/stocks/screener/indicators');
     return toCamelCase<IndicatorMeta[]>(response.data);
@@ -46,8 +78,12 @@ export const screenerApi = {
       formula: payload.formula,
       formula_name: payload.formulaName,
       market: payload.market,
+      scope: payload.scope,
       board_filters: payload.boardFilters,
+      board_name: payload.boardName,
+      board_type: payload.boardType,
       volume_heat_ratio: payload.volumeHeatRatio,
+      scan_limit: payload.scanLimit,
       limit: payload.limit,
       offset: payload.offset,
       export_csv: payload.exportCsv,

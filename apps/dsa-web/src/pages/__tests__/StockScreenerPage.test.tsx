@@ -3,9 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import StockScreenerPage from '../StockScreenerPage';
 import { screenerApi } from '../../api/screener';
 import type {
+  ScreenerBoardOption,
+  ScreenerBoardPreview,
   FormulaValidationResponse,
   IndicatorMeta,
   ScreenerScanResponse,
+  ScreenerScopeOption,
   ScreenerTaskAccepted,
   ScreenerTaskStatusResponse,
 } from '../../types/screener';
@@ -45,6 +48,9 @@ vi.stubGlobal('EventSource', MockEventSource as unknown as typeof EventSource);
 
 vi.mock('../../api/screener', () => ({
   screenerApi: {
+    getScopes: vi.fn(),
+    getBoards: vi.fn(),
+    getBoardPreview: vi.fn(),
     getIndicators: vi.fn(),
     getFormulaFunctions: vi.fn(),
     validateFormula: vi.fn(),
@@ -56,11 +62,16 @@ vi.mock('../../api/screener', () => ({
 
 const mockedScreenerApi = vi.mocked(screenerApi);
 
+function getConfigSelect(index: number) {
+  return screen.getAllByRole('combobox')[index];
+}
+
 const indicatorCatalog: IndicatorMeta[] = [
   {
     key: 'RSI',
     name: 'RSI 相对强弱',
     category: '摆动',
+    summary: '衡量超买超卖，常见阈值是 30 和 70。',
     params: [{ name: 'period', label: '周期', type: 'int', default: 14 }],
     outputs: [{ key: 'rsi', label: 'RSI' }],
     operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'],
@@ -93,15 +104,51 @@ const scanResponse: ScreenerScanResponse = {
   csv: 'code,name\n600519,贵州茅台\n',
 };
 
+const scopeCatalog: ScreenerScopeOption[] = [
+  { key: 'all_market', market: 'cn', label: 'A 股全市场', description: '扫描全部 A 股标的。', kind: 'full_market', estimatedCount: 5000, previewCodes: ['600519', '000001'] },
+  { key: 'cn_board_industry_dynamic', market: 'cn', label: 'A 股行业板块（自选）', description: '从真实行业板块目录中选择。', kind: 'board_dynamic', estimatedCount: null, previewCodes: [], boardType: 'industry' },
+  { key: 'cn_board_concept_dynamic', market: 'cn', label: 'A 股概念板块（自选）', description: '从真实概念板块目录中选择。', kind: 'board_dynamic', estimatedCount: null, previewCodes: [], boardType: 'concept' },
+  { key: 'cn_semiconductor', market: 'cn', label: 'A 股半导体', description: '半导体板块成分股。', kind: 'board', estimatedCount: 132, previewCodes: ['603986', '688041', '688981'], boardName: '半导体', boardType: 'industry' },
+  { key: 'custom_pool', market: 'cn', label: '自定义股票池', description: '手工输入 A 股代码。', kind: 'custom_pool', estimatedCount: null, previewCodes: [] },
+  { key: 'hk_board_industry_dynamic', market: 'hk', label: '港股行业板块（自选）', description: '从港股行业池中选择。', kind: 'board_dynamic', estimatedCount: null, previewCodes: [], boardType: 'industry' },
+  { key: 'hk_finance', market: 'hk', label: '港股金融蓝筹', description: '港股金融蓝筹。', kind: 'preset_pool', estimatedCount: 20, previewCodes: ['00005', '02318', '01299'] },
+  { key: 'custom_pool', market: 'hk', label: '自定义股票池', description: '手工输入港股代码。', kind: 'custom_pool', estimatedCount: null, previewCodes: [] },
+  { key: 'us_board_industry_dynamic', market: 'us', label: '美股行业板块（自选）', description: '从美股行业池中选择。', kind: 'board_dynamic', estimatedCount: null, previewCodes: [], boardType: 'industry' },
+  { key: 'us_semiconductor', market: 'us', label: '美股半导体', description: '美股半导体范围。', kind: 'preset_pool', estimatedCount: 20, previewCodes: ['NVDA', 'AMD', 'AVGO'] },
+  { key: 'custom_pool', market: 'us', label: '自定义股票池', description: '手工输入美股代码。', kind: 'custom_pool', estimatedCount: null, previewCodes: [] },
+];
+
+const boardCatalog: ScreenerBoardOption[] = [
+  { market: 'cn', boardType: 'industry', boardName: '半导体', label: '半导体', estimatedCount: 132, description: '半导体板块真实成分股。', tierSummary: null, tiers: [] },
+  { market: 'cn', boardType: 'industry', boardName: '白酒', label: '白酒', estimatedCount: 21, description: '白酒板块真实成分股。', tierSummary: null, tiers: [] },
+];
+
+const boardPreview: ScreenerBoardPreview = {
+  market: 'cn',
+  boardType: 'industry',
+  boardName: '半导体',
+  estimatedCount: 132,
+  previewCodes: ['603986', '688981', '688041'],
+  description: '半导体板块真实成分股。',
+  tierSummary: null,
+  tiers: [],
+};
+
 describe('StockScreenerPage', () => {
   beforeEach(() => {
     MockEventSource.instances = [];
+    mockedScreenerApi.getScopes.mockReset();
+    mockedScreenerApi.getBoards.mockReset();
+    mockedScreenerApi.getBoardPreview.mockReset();
     mockedScreenerApi.getIndicators.mockReset();
     mockedScreenerApi.getFormulaFunctions.mockReset();
     mockedScreenerApi.validateFormula.mockReset();
     mockedScreenerApi.scan.mockReset();
     mockedScreenerApi.getTaskStatus.mockReset();
     mockedScreenerApi.getTaskStreamUrl.mockReset();
+    mockedScreenerApi.getScopes.mockResolvedValue(scopeCatalog);
+    mockedScreenerApi.getBoards.mockResolvedValue(boardCatalog);
+    mockedScreenerApi.getBoardPreview.mockResolvedValue(boardPreview);
     mockedScreenerApi.getIndicators.mockResolvedValue(indicatorCatalog);
     mockedScreenerApi.getFormulaFunctions.mockResolvedValue([
       {
@@ -141,32 +188,194 @@ describe('StockScreenerPage', () => {
     expect(screen.getByText('默认公式选股，开始前会自动校验公式')).toBeTruthy();
     expect(screen.getByText('技术指标选股')).toBeTruthy();
     expect(screen.getByText('公式编辑器')).toBeTruthy();
+    expect(getConfigSelect(1)).toBeTruthy();
   });
 
-  it('shows a validation alert when hk/us pool is empty and scan is clicked', async () => {
+  it('shows a validation alert when custom pool is empty and scan is clicked', async () => {
     render(<StockScreenerPage />);
 
-    fireEvent.change(await screen.findByLabelText('市场'), { target: { value: 'us' } });
+    fireEvent.change(getConfigSelect(0), { target: { value: 'us' } });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'custom_pool' } });
     fireEvent.click(screen.getAllByRole('button', { name: '开始选股' })[0]);
 
     expect(mockedScreenerApi.scan).not.toHaveBeenCalled();
-    expect(await screen.findByText('港股和美股扫描需要先填写自定义股票池代码')).toBeTruthy();
+    expect(await screen.findByText('当前已切换到“自定义股票池”，请先填写美股代码')).toBeTruthy();
   });
 
-  it('shows a validation alert when cn full-market scan is not explicitly enabled', async () => {
+  it('requires selecting a real cn board before scanning dynamic board scope', async () => {
     render(<StockScreenerPage />);
 
-    fireEvent.click((await screen.findAllByRole('button', { name: '开始选股' }))[0]);
+    await screen.findByRole('option', { name: 'A 股行业板块（自选）' });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'cn_board_industry_dynamic' } });
+    fireEvent.click(screen.getAllByRole('button', { name: '开始选股' })[0]);
 
     expect(mockedScreenerApi.scan).not.toHaveBeenCalled();
-    expect(await screen.findByText('A 股全市场扫描耗时较长。请先填写股票池，或勾选“允许全市场扫描（较慢）”后再开始选股。')).toBeTruthy();
+    expect(await screen.findByText('当前扫描范围需要先选择一个A股板块，才能开始扫描。')).toBeTruthy();
+  });
+
+  it('uses preset sector pool for us scan and passes scan limit', async () => {
+    render(<StockScreenerPage />);
+
+    await waitFor(() => {
+      expect(mockedScreenerApi.getScopes).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.change(getConfigSelect(0), { target: { value: 'us' } });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'us_semiconductor' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: /扫描上限/ }), { target: { value: '6' } });
+    fireEvent.click((await screen.findAllByRole('button', { name: '开始选股' }))[0]);
+
+    await waitFor(() => {
+      expect(mockedScreenerApi.scan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          market: 'us',
+          scanLimit: 6,
+          scope: 'us_semiconductor',
+          codes: undefined,
+          asyncMode: false,
+        }),
+      );
+    });
+  });
+
+  it('loads dynamic cn boards and passes selected board to scan request', async () => {
+    render(<StockScreenerPage />);
+
+    await screen.findByRole('option', { name: 'A 股行业板块（自选）' });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'cn_board_industry_dynamic' } });
+
+    await waitFor(() => {
+      expect(mockedScreenerApi.getBoards).toHaveBeenCalledWith('cn', 'industry');
+    });
+
+    const boardLabel = await screen.findByText('具体行业板块');
+    const boardSelect = boardLabel.closest('label')?.parentElement?.querySelector('select');
+
+    expect(boardSelect).toBeTruthy();
+    fireEvent.change(boardSelect as HTMLSelectElement, { target: { value: '半导体' } });
+
+    await waitFor(() => {
+      expect(mockedScreenerApi.getBoardPreview).toHaveBeenCalledWith('cn', 'industry', '半导体', 20);
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: '开始选股' })[0]);
+
+    await waitFor(() => {
+      expect(mockedScreenerApi.scan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          market: 'cn',
+          scope: 'cn_board_industry_dynamic',
+          boardName: '半导体',
+          boardType: 'industry',
+          codes: undefined,
+          asyncMode: false,
+        }),
+      );
+    });
+  });
+
+  it('loads real preview for cn preset board scopes', async () => {
+    render(<StockScreenerPage />);
+
+    await screen.findByRole('option', { name: 'A 股半导体' });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'cn_semiconductor' } });
+
+    await waitFor(() => {
+      expect(mockedScreenerApi.getBoardPreview).toHaveBeenCalledWith('cn', 'industry', '半导体', 20);
+    });
+
+    expect(await screen.findByText(/将按 半导体 的完整股票池扫描/)).toBeTruthy();
+  });
+
+  it('shows tier details for configured hk dynamic board pools', async () => {
+    mockedScreenerApi.getBoards.mockResolvedValueOnce([
+      {
+        market: 'hk',
+        boardType: 'industry',
+        boardName: '科技互联网',
+        label: '科技互联网',
+        estimatedCount: 12,
+        description: '港股平台互联网与软件服务代表公司。',
+        tierSummary: '龙头 4 / 中军 4 / 弹性 4',
+        tiers: [
+          { key: 'leaders', label: '龙头', count: 4, codes: ['00700', '09988', '03690', '09618'] },
+          { key: 'core', label: '中军', count: 4, codes: ['09888', '01024', '06618', '09999'] },
+          { key: 'momentum', label: '弹性', count: 4, codes: ['09868', '09626', '09961', '03888'] },
+        ],
+      },
+    ]);
+    mockedScreenerApi.getBoardPreview.mockResolvedValueOnce({
+      market: 'hk',
+      boardType: 'industry',
+      boardName: '科技互联网',
+      estimatedCount: 12,
+      previewCodes: ['00700', '09988', '03690', '09618'],
+      description: '港股平台互联网与软件服务代表公司。',
+      tierSummary: '龙头 4 / 中军 4 / 弹性 4',
+      tiers: [
+        { key: 'leaders', label: '龙头', count: 4, codes: ['00700', '09988', '03690', '09618'] },
+        { key: 'core', label: '中军', count: 4, codes: ['09888', '01024', '06618', '09999'] },
+        { key: 'momentum', label: '弹性', count: 4, codes: ['09868', '09626', '09961', '03888'] },
+      ],
+    });
+
+    render(<StockScreenerPage />);
+
+    fireEvent.change(getConfigSelect(0), { target: { value: 'hk' } });
+    await screen.findByRole('option', { name: '港股行业板块（自选）' });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'hk_board_industry_dynamic' } });
+
+    await waitFor(() => {
+      expect(mockedScreenerApi.getBoards).toHaveBeenCalledWith('hk', 'industry');
+    });
+
+    const boardLabel = await screen.findByText('具体行业板块');
+    const boardSelect = boardLabel.closest('label')?.parentElement?.querySelector('select');
+    fireEvent.change(boardSelect as HTMLSelectElement, { target: { value: '科技互联网' } });
+
+    await screen.findByText('板块分层明细');
+    expect(screen.getByText('龙头')).toBeTruthy();
+    expect(screen.getByText('00700、09988、03690、09618')).toBeTruthy();
+    expect(screen.getByText('中军')).toBeTruthy();
+  });
+
+  it('loads dynamic us industry boards independently from cn catalog', async () => {
+    mockedScreenerApi.getBoards
+      .mockResolvedValueOnce(boardCatalog)
+      .mockResolvedValueOnce([
+        { market: 'us', boardType: 'industry', boardName: '半导体', label: '半导体', estimatedCount: 12 },
+        { market: 'us', boardType: 'industry', boardName: '金融', label: '金融', estimatedCount: 12 },
+      ]);
+    mockedScreenerApi.getBoardPreview.mockResolvedValueOnce({
+      market: 'us',
+      boardType: 'industry',
+      boardName: '半导体',
+      estimatedCount: 12,
+      previewCodes: ['NVDA', 'AMD', 'AVGO'],
+    });
+
+    render(<StockScreenerPage />);
+
+    await screen.findByRole('option', { name: 'A 股行业板块（自选）' });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'cn_board_industry_dynamic' } });
+    await waitFor(() => {
+      expect(mockedScreenerApi.getBoards).toHaveBeenCalledWith('cn', 'industry');
+    });
+
+    fireEvent.change(getConfigSelect(0), { target: { value: 'us' } });
+    await screen.findByRole('option', { name: '美股行业板块（自选）' });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'us_board_industry_dynamic' } });
+
+    await waitFor(() => {
+      expect(mockedScreenerApi.getBoards).toHaveBeenCalledWith('us', 'industry');
+    });
   });
 
   it('submits a custom cn condition scan and renders returned results', async () => {
     render(<StockScreenerPage />);
 
     fireEvent.change(await screen.findByLabelText('选股模式'), { target: { value: 'condition' } });
-    fireEvent.change(await screen.findByLabelText('自定义股票池'), { target: { value: '600519' } });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'custom_pool' } });
+    fireEvent.change(await screen.findByRole('textbox', { name: /自定义股票池/ }), { target: { value: '600519' } });
     fireEvent.click(screen.getAllByRole('button', { name: '开始选股' })[0]);
 
     await waitFor(() => {
@@ -177,6 +386,7 @@ describe('StockScreenerPage', () => {
       expect.objectContaining({
         mode: 'condition',
         market: 'cn',
+        scope: 'custom_pool',
         codes: ['600519'],
         exportCsv: true,
         limit: 200,
@@ -207,8 +417,10 @@ describe('StockScreenerPage', () => {
   it('supports formula mode validation and auto-validates before scan', async () => {
     render(<StockScreenerPage />);
 
+    fireEvent.change(getConfigSelect(0), { target: { value: 'us' } });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'custom_pool' } });
     fireEvent.change(await screen.findByLabelText('公式名称'), { target: { value: '趋势延续' } });
-    fireEvent.change(await screen.findByLabelText('自定义股票池'), { target: { value: 'AAPL' } });
+    fireEvent.change(await screen.findByRole('textbox', { name: /自定义股票池/ }), { target: { value: 'AAPL' } });
     fireEvent.change(await screen.findByLabelText('选股公式'), { target: { value: 'CLOSE > MA(CLOSE, 5)' } });
 
     fireEvent.click(screen.getAllByRole('button', { name: '校验公式' })[0]);
@@ -240,7 +452,8 @@ describe('StockScreenerPage', () => {
           mode: 'formula',
           formula: 'CLOSE > MA(CLOSE, 5)',
           formulaName: '趋势延续',
-          market: 'cn',
+          market: 'us',
+          scope: 'custom_pool',
           codes: ['AAPL'],
           asyncMode: false,
         }),
@@ -296,13 +509,13 @@ describe('StockScreenerPage', () => {
 
     render(<StockScreenerPage />);
 
-    fireEvent.click(await screen.findByLabelText('允许全市场扫描（较慢）'));
     fireEvent.click(screen.getAllByRole('button', { name: '开始选股' })[0]);
 
     await waitFor(() => {
       expect(mockedScreenerApi.scan).toHaveBeenCalledWith(
         expect.objectContaining({
           market: 'cn',
+          scope: 'all_market',
           codes: undefined,
           asyncMode: true,
         }),
