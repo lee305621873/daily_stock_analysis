@@ -39,9 +39,9 @@ daily_stock_analysis/
 推荐启动顺序：
 
 ```bash
-python3.10 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
+test -x .venv/bin/python || python3.10 -m venv .venv
+.venv/bin/python --version
+.venv/bin/python -m pip install -r requirements.txt
 
 cd apps/dsa-web
 nvm use 22.14.0
@@ -50,11 +50,14 @@ npm run build
 cd ../..
 
 WEBUI_AUTO_BUILD=false .venv/bin/python main.py --webui-only --host 127.0.0.1 --port 8000
+WEBUI_AUTO_BUILD=false python3 main.py --webui-only --host 127.0.0.1 --port 8000
+  PORT=8001 ./scripts/run_webui_with_logs.sh
 ```
 
 说明：
 
 - `npm run build` 会把前端静态资源输出到仓库的 `static/` 目录。
+- 若 `.venv/bin/python` 提示 `no such file or directory`，通常不是目录不存在，而是虚拟环境绑定的底层 Python 可执行文件已经失效（常见于基于临时路径创建的 venv）；这时应先重建 `.venv`，再安装依赖。
 - 已经手动构建前端时，建议启动前设置 `WEBUI_AUTO_BUILD=false`，避免服务启动时再次执行 `npm install && npm run build`。
 - Web 和 API 共用同一个服务入口；`--webui-only` 启动后，页面和接口都挂在 `http://127.0.0.1:8000`。
 - 只开 API 时可用 `.venv/bin/python main.py --serve-only --host 127.0.0.1 --port 8000`。
@@ -66,6 +69,7 @@ WEBUI_AUTO_BUILD=false .venv/bin/python main.py --webui-only --host 127.0.0.1 --
 
 - 前端若报 `Cannot find module 'vite'` 或 `vite/client`，通常是 `apps/dsa-web` 依赖未安装，或 Node 版本过低。
 - 后端若报 `No module named 'dotenv'`、`fastapi`、`litellm`，说明依赖没有安装到当前 `.venv`。
+- 后端若直接报 `zsh: no such file or directory: .venv/bin/python`，优先检查 `ls -l .venv/bin/python*`；若指向的解释器路径已不存在，删除并重建 `.venv`。
 - Web 服务日志若显示前端静态资源未就绪，先重新执行 `cd apps/dsa-web && npm ci && npm run build`。
 - macOS 出现 `NotOpenSSLWarning` 多数不阻断运行，可先继续验证主流程。
 

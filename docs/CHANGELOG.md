@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### 新增
+
+- 🖥️ **WebUI 控制台日志启动脚本**：新增 `scripts/run_webui_with_logs.sh`，以 `PYTHONUNBUFFERED=1` 前台启动 `--webui-only` 服务，并将当前终端输出同步写入 `logs/console_*.log`，便于排查 Agent Chat / SSE / LLM 调用日志。
+
 ## [3.7.0] - 2026-03-15
 
 ### 新功能

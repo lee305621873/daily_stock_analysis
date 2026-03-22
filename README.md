@@ -358,6 +358,12 @@ LITELLM_MODEL=openai/deepseek-chat
    cd ../..
    ```
 
+   如果希望在当前终端实时看到 Web / Agent / Chat 日志，同时保存一份控制台输出，可使用：
+   ```bash
+   ./scripts/run_webui_with_logs.sh
+   ```
+   默认监听 `127.0.0.1:8000`，并将终端输出同步写入 `logs/console_*.log`。
+
 访问 `http://127.0.0.1:8000` 即可使用。
 
 > 也可以使用 `python main.py --serve` (等效命令)
