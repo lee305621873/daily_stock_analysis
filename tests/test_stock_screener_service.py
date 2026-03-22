@@ -64,6 +64,23 @@ def _request(**kwargs) -> ScreenerScanRequest:
 
 
 class StockScreenerServiceTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        self._board_cache = {"version": 1, "updated_at": None, "catalogs": {}, "constituents": {}, "profiles": {}}
+        self._load_cache_patcher = patch(
+            "src.services.stock_screener_service.load_board_cache",
+            side_effect=lambda *args, **kwargs: self._board_cache,
+        )
+        self._save_cache_patcher = patch(
+            "src.services.stock_screener_service.save_board_cache",
+            side_effect=lambda cache, *args, **kwargs: cache,
+        )
+        self._load_cache_patcher.start()
+        self._save_cache_patcher.start()
+
+    def tearDown(self) -> None:
+        self._save_cache_patcher.stop()
+        self._load_cache_patcher.stop()
+
     def test_build_universe_requires_codes_for_us(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
 
@@ -299,6 +316,48 @@ class StockScreenerServiceTestCase(unittest.TestCase):
 
         self.assertTrue(result.valid)
         self.assertIn("MA", result.functions)
+
+    def test_validate_formula_returns_invalid_payload_instead_of_raising(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        result = service.validate_formula("__import__('os').system('pwd')")
+
+        self.assertFalse(result.valid)
+        self.assertIn("supported", result.message.lower())
+
+    def test_build_overseas_market_board_snapshots_prefers_live_matches_and_keeps_seed_codes(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        cache = {"version": 1, "updated_at": None, "catalogs": {}, "constituents": {}, "profiles": {}}
+
+        with patch.object(
+            service,
+            "_fetch_overseas_market_symbols",
+            return_value=(
+                [
+                    service._build_custom_universe(["NVDA", "AMD", "JPM"], MarketType.US)[0],
+                    service._build_custom_universe(["AMD"], MarketType.US)[0],
+                    service._build_custom_universe(["JPM"], MarketType.US)[0],
+                ],
+                "akshare_us_spot_em",
+            ),
+        ):
+            with patch.object(
+                service,
+                "_fetch_yfinance_profile",
+                side_effect=lambda market, basic: {
+                    "NVDA": {"code": "NVDA", "name": "NVIDIA", "sector": "Technology", "industry": "Semiconductors", "source": "yfinance"},
+                    "AMD": {"code": "AMD", "name": "AMD", "sector": "Technology", "industry": "Semiconductors", "source": "yfinance"},
+                    "JPM": {"code": "JPM", "name": "JPMorgan", "sector": "Financial Services", "industry": "Banks - Diversified", "source": "yfinance"},
+                }[basic.code],
+            ):
+                snapshots, source = service.build_overseas_market_board_snapshots(MarketType.US, cache=cache, profile_limit=3)
+
+        self.assertEqual(source, "akshare_us_spot_em")
+        semiconductor = snapshots["半导体"]
+        self.assertTrue(semiconductor["source"].startswith("akshare_us_spot_em+yfinance"))
+        self.assertIn("NVDA", [item["code"] for item in semiconductor["items"][:3]])
+        self.assertIn("AMD", [item["code"] for item in semiconductor["items"][:3]])
+        self.assertIn("profiles", cache)
 
     def test_scan_formula_mode_returns_result(self) -> None:
         service = StockScreenerService(manager=_FakeManager())

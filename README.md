@@ -34,6 +34,8 @@ demo
 | 分析 | 多维度分析 | 技术面（盘中实时 MA/多头排列）+ 筹码分布 + 舆情情报 + 实时行情 |
 | 市场 | 全球市场 | 支持 A股、港股、美股及美股指数（SPX、DJI、IXIC 等） |
 | 选股 | 技术指标扫描 | Web 主站新增 `选股` Tab，默认进入公式选股；支持 A 股/港股/美股条件选股与公式选股，扫描范围由后端统一维护；A 股除预置板块外还支持从真实行业/概念板块目录选择具体板块并预览真实成分股，A 股预置板块快捷入口也会尝试加载真实板块预览；A 股板块成分股优先走 AkShare，失败后再尝试 Tushare（如已配置 `TUSHARE_TOKEN`），最后才回退到维护清单；后端新增完整板块成分股接口，便于脚本和后续页面复用；港股/美股新增后端维护的行业板块池，并按“龙头 / 中军 / 弹性”分层维护；当前已补充半导体、科技、消费、金融、公用事业、REITs、航空航天军工等可配置板块，前端选中后会直接展示分层明细，且扫描范围元数据会优先走本地配置预览以避免页面回退成仅显示全市场；后续可继续替换为更真实的数据源；支持扫描上限与指标提示；A 股全市场扫描会自动转后台任务并通过 SSE 实时刷新进度 |
+
+> 选股页的指标元数据、公式函数列表与公式校验现已和行情数据源初始化解耦；即使本地尚未装全 AkShare / Tushare / YFinance 等行情依赖，页面也能先加载基础配置并完成公式校验。实际执行扫描时仍需对应的数据源环境可用。
 | 基本面 | 结构化聚合 | 新增 `fundamental_context`（valuation/growth/earnings/institution/capital_flow/dragon_tiger/boards，其中 `boards` 表示板块涨跌榜），主链路 fail-open 降级 |
 | 策略 | 市场策略系统 | 内置 A股「三段式复盘策略」与美股「Regime Strategy」，输出进攻/均衡/防守或 risk-on/neutral/risk-off 计划，并附“仅供参考，不构成投资建议”提示 |
 | 复盘 | 大盘复盘 | 每日市场概览、板块涨跌；支持 cn(A股)/us(美股)/both(两者) 切换 |
@@ -47,6 +49,8 @@ demo
 > 历史报告详情会优先展示 AI 返回的原始「狙击点位」文本，避免区间价、条件说明等复杂内容在历史回看时被压缩成单个数字。
 
 > 技术公式语法、函数清单与准确性口径文档见 `docs/stock-formula-spec.md`、`docs/stock-formula-functions.md`、`docs/stock-formula-accuracy.md`。
+
+> 选股板块支持本地持久化缓存。可使用 `python scripts/refresh_screener_board_cache.py --markets cn,hk,us` 预生成板块目录与成分股缓存；运行后 Web/API 会优先读取 `data/stock_screener/board_cache.json`，避免每次页面打开都实时请求外部接口。A 股缓存链路为 `AkShare -> Tushare -> 本地维护清单`；港股/美股缓存链路会优先尝试 `AkShare 全市场列表 + YFinance 行业画像` 自动扩充板块成分股，失败时再回退到仓库内置种子池。若要批量缓存全部 A 股动态行业/概念板块，可额外加 `--cn-all-dynamic`（耗时较长，建议按需执行）；若只想快速落盘内置港美股种子池，可加 `--skip-overseas-live`。
 
 > 如需直接导出板块代码，可运行 `python scripts/export_board_codes.py --market cn --board-type industry --board-name 半导体`；半导体也保留了快捷脚本 `python scripts/export_semiconductor_codes.py`。脚本与 API 现在共用同一条 A 股板块链路：`AkShare -> Tushare -> 仓库维护清单`。
 

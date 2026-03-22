@@ -456,7 +456,7 @@ const StockScreenerPage: React.FC = () => {
       const validation = await screenerApi.validateFormula(trimmedFormula);
       setFormulaValidation(validation);
       setFormulaValidationError(null);
-      return true;
+      return validation.valid;
     } catch (error) {
       const parsedError = getParsedApiError(error);
       setFormulaValidation(null);
@@ -1007,7 +1007,7 @@ const StockScreenerPage: React.FC = () => {
               <Badge variant="info">支持 OHLCV / MA / EMA / MACD / RSI / KDJ / BOLL / ATR / COUNT / EVERY / CROSS</Badge>
             </div>
 
-            {formulaValidation ? (
+            {formulaValidation?.valid ? (
               <Card className="border border-cyan/20 bg-cyan/5">
                 <div className="space-y-3 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
@@ -1026,6 +1026,20 @@ const StockScreenerPage: React.FC = () => {
                         <div key={warning}>- {warning}</div>
                       ))}
                     </div>
+                  ) : null}
+                </div>
+              </Card>
+            ) : null}
+
+            {formulaValidation && !formulaValidation.valid ? (
+              <Card className="border border-warning/20 bg-warning/10">
+                <div className="space-y-2 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="warning">公式未通过</Badge>
+                    <span className="text-white">{formulaValidation.message}</span>
+                  </div>
+                  {formulaValidation.normalizedFormula ? (
+                    <div className="font-mono text-secondary-text">{formulaValidation.normalizedFormula}</div>
                   ) : null}
                 </div>
               </Card>

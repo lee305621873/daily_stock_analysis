@@ -31,6 +31,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - 新增 `scripts/export_board_codes.py` 与 `scripts/export_semiconductor_codes.py`，可直接导出 A/H/US 板块代码；A 股脚本与 API 共用同一条 `AkShare -> Tushare -> 本地维护清单` 成分股链路，避免维护两套逻辑。
   - A 股完整板块成分股链路升级为 `AkShare -> Tushare -> 本地维护清单`；并新增 `GET /api/v1/stocks/screener/boards/constituents`，可直接获取完整板块成分股列表，便于脚本、Web 和后续批量分析能力复用。
 
+### 修复
+
+- 🛠️ **选股页元数据 / 公式校验解耦数据源初始化**
+  - `StockScreenerService` 改为延迟初始化 `DataFetcherManager`，避免页面仅加载指标元数据、公式函数和公式校验时，就因为行情数据源依赖未安装或初始化失败而整体报错。
+  - 现在选股页基础元数据与公式校验可在“未装全行情依赖”的环境下先正常使用；只有真正执行扫描、拉行情或查板块归属时才会按需初始化数据源栈。
+  - 修复 `api.v1` 包初始化触发的 `router -> endpoint -> stock_screener_service` 循环导入，恢复公式校验与选股元数据接口的稳定导入链。
+  - A 股行业板块目录在 AkShare / 外网不可用时，新增回退到仓库内置板块清单，保证 A 股 / 港股 / 美股三类板块入口都能正常展示。
+  - 当 `TUSHARE_TOKEN` 缺少板块接口权限时，日志与异常信息会明确提示“权限不足”，不再只显示模糊的上游失败文案，便于判断是否需要升级 Tushare 权限。
+  - 新增 `data/stock_screener/board_cache.json` 持久化缓存链路与 `scripts/refresh_screener_board_cache.py` 刷新脚本；运行后选股页会优先读取本地缓存的板块目录与成分股，减少页面和扫描过程对外部接口的重复依赖。
+  - 港股 / 美股板块缓存新增 `AkShare 全市场代码 + YFinance 行业画像` 的 live enrich 链路，会在刷新脚本中按关键字规则尽量扩充半导体、金融、消费、医疗、REITs 等板块的完整成分股，并将结果与仓库内置种子池合并后落盘。
+  - 公式校验接口对“公式语法/函数不合法”改为返回结构化 `valid=false`，前端展示“公式未通过”而不是通用请求失败，避免把业务校验误判成服务故障。
+
 ## [3.7.0] - 2026-03-15
 
 ### 新功能

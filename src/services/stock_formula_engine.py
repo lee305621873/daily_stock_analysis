@@ -9,8 +9,15 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Set
 
-import numpy as np
-import pandas as pd
+try:
+    import numpy as np
+except Exception:  # pragma: no cover - optional dependency for parse-only mode
+    np = None  # type: ignore
+
+try:
+    import pandas as pd
+except Exception:  # pragma: no cover - optional dependency for parse-only mode
+    pd = None  # type: ignore
 
 from api.v1.schemas.stocks import (
     FormulaFunctionMeta,
@@ -668,6 +675,18 @@ ATTR_WHITELIST = {"macd", "signal", "hist", "k", "d", "j", "upper", "mid", "lowe
 class StockFormulaEngine:
     DEFAULT_LOOKBACK = 250
 
+    @staticmethod
+    def _ensure_runtime_deps() -> None:
+        global np, pd
+        if np is None:
+            import numpy as _np  # type: ignore
+
+            np = _np
+        if pd is None:
+            import pandas as _pd  # type: ignore
+
+            pd = _pd
+
     def list_functions(self) -> List[FormulaFunctionMeta]:
         return FUNCTION_CATALOG
 
@@ -765,10 +784,12 @@ class StockFormulaEngine:
         )
 
     def evaluate(self, formula: str, df: pd.DataFrame) -> FormulaScanMatch:
+        self._ensure_runtime_deps()
         parsed = self.parse(formula)
         return self.evaluate_parsed(parsed, df)
 
     def evaluate_parsed(self, parsed: FormulaParseResult, df: pd.DataFrame) -> FormulaScanMatch:
+        self._ensure_runtime_deps()
         context = self._build_context(df)
         value = self._eval_node(parsed.tree.body, context, df.index)
         truth_series = _series_truth(value, df.index)
