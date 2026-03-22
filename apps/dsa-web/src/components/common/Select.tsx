@@ -11,6 +11,7 @@ interface SelectProps {
   onChange: (value: string) => void;
   options: SelectOption[];
   label?: string;
+  labelSuffix?: React.ReactNode;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -27,6 +28,7 @@ export const Select: React.FC<SelectProps> = ({
   onChange,
   options,
   label,
+  labelSuffix,
   placeholder = '请选择',
   disabled = false,
   className = '',
@@ -35,7 +37,12 @@ export const Select: React.FC<SelectProps> = ({
 
   return (
     <div className={cn('flex flex-col', className)}>
-      {label ? <label htmlFor={selectId} className="mb-2 text-sm font-medium text-foreground">{label}</label> : null}
+      {label ? (
+        <label htmlFor={selectId} className="mb-2 inline-flex items-center gap-2 text-sm font-medium text-foreground">
+          <span>{label}</span>
+          {labelSuffix}
+        </label>
+      ) : null}
       <div className="relative">
         <select
           id={selectId}

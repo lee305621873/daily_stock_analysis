@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ChatPage from './pages/ChatPage';
 import PortfolioPage from './pages/PortfolioPage';
+import StockScreenerPage from './pages/StockScreenerPage';
 import { ApiErrorAlert } from './components/common';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAgentChatStore } from './stores/agentChatStore';
@@ -31,6 +32,15 @@ const BacktestIcon: React.FC<{ active?: boolean }> = ({active}) => (
 
 const PortfolioIcon: React.FC<{ active?: boolean }> = ({active}) => (
     <RiExchangeFundsLine className="w-6 h-6" size={active ? 25 : 24} />
+);
+
+const ScreenerIcon: React.FC<{ active?: boolean }> = ({active}) => (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={active ? 2 : 1.5}
+              d="M4 6h16M7 12h10M10 18h4"/>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={active ? 2 : 1.5}
+              d="M17 17l3 3M20 14a3 3 0 11-6 0 3 3 0 016 0z"/>
+    </svg>
 );
 
 const SettingsIcon: React.FC<{ active?: boolean }> = ({active}) => (
@@ -80,6 +90,12 @@ const NAV_ITEMS: DockItem[] = [
         label: '持仓',
         to: '/portfolio',
         icon: PortfolioIcon,
+    },
+    {
+        key: 'screener',
+        label: '选股',
+        to: '/screener',
+        icon: ScreenerIcon,
     },
     {
         key: 'backtest',
@@ -219,6 +235,7 @@ const AppContent: React.FC = () => {
                     <Route path="/" element={<HomePage/>}/>
                     <Route path="/chat" element={<ChatPage/>}/>
                     <Route path="/portfolio" element={<PortfolioPage/>}/>
+                    <Route path="/screener" element={<StockScreenerPage/>}/>
                     <Route path="/backtest" element={<BacktestPage/>}/>
                     <Route path="/settings" element={<SettingsPage/>}/>
                     <Route path="/login" element={<LoginPage/>}/>
