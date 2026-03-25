@@ -121,6 +121,13 @@ class IndicatorKey(str, Enum):
     BOLL = "BOLL"
     VOL = "VOL"
     OBV = "OBV"
+    HEAT = "HEAT"
+    PE = "PE"
+    PB = "PB"
+    PEG = "PEG"
+    ROE = "ROE"
+    REVENUE_YOY = "REVENUE_YOY"
+    NET_PROFIT_YOY = "NET_PROFIT_YOY"
 
 
 class Operator(str, Enum):
@@ -159,6 +166,7 @@ class ScreenerTaskStatusEnum(str, Enum):
 class ScreenerMode(str, Enum):
     CONDITION = "condition"
     FORMULA = "formula"
+    HYBRID = "hybrid"
 
 
 class ScreenerScopeKind(str, Enum):
@@ -277,7 +285,7 @@ class IndicatorCondition(BaseModel):
 
 
 class ScreenerScanRequest(BaseModel):
-    mode: ScreenerMode = Field(default=ScreenerMode.CONDITION, description="condition | formula")
+    mode: ScreenerMode = Field(default=ScreenerMode.CONDITION, description="condition | formula | hybrid")
     conditions: Optional[List[IndicatorCondition]] = Field(default=None)
     formula: Optional[str] = Field(default=None, description="Formula expression used when mode=formula")
     formula_name: Optional[str] = Field(default=None, description="Optional human-readable formula name")
@@ -308,9 +316,15 @@ class ScreenerScanRequest(BaseModel):
             if not formula:
                 raise ValueError("formula cannot be empty when mode=formula")
             values["formula"] = formula
-        else:
+        elif mode == ScreenerMode.CONDITION:
             if not conditions:
                 raise ValueError("conditions cannot be empty when mode=condition")
+        elif mode == ScreenerMode.HYBRID:
+            if not conditions:
+                raise ValueError("conditions cannot be empty when mode=hybrid")
+            if not formula:
+                raise ValueError("formula cannot be empty when mode=hybrid")
+            values["formula"] = formula
         if board_name:
             values["board_name"] = board_name
         return values
@@ -383,6 +397,11 @@ class FormulaValidationResponse(BaseModel):
     normalized_formula: str
     referenced_fields: List[str] = Field(default_factory=list)
     functions: List[str] = Field(default_factory=list)
+    function_usage: Dict[str, int] = Field(default_factory=dict)
+    expression_nodes: int = Field(default=0, ge=0)
+    complexity_score: int = Field(default=0, ge=0)
+    complexity_level: str = Field(default="medium", description="low | medium | high")
     message: str
     estimated_lookback: int = Field(default=250, ge=1)
     warnings: List[str] = Field(default_factory=list)
+    suggestions: List[str] = Field(default_factory=list)

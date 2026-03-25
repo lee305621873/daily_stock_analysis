@@ -75,6 +75,18 @@ from src.services.stock_formula_engine import FormulaParseResult, FormulaValidat
 
 logger = logging.getLogger(__name__)
 _BOARD_CACHE_WRITE_LOCK = threading.Lock()
+_SCALAR_OPERATORS = [Operator.GT.value, Operator.GTE.value, Operator.LT.value, Operator.LTE.value, Operator.EQ.value]
+_SCALAR_INDICATORS = {
+    IndicatorKey.HEAT,
+    IndicatorKey.PE,
+    IndicatorKey.PB,
+    IndicatorKey.PEG,
+    IndicatorKey.ROE,
+    IndicatorKey.REVENUE_YOY,
+    IndicatorKey.NET_PROFIT_YOY,
+}
+_VALUATION_INDICATORS = {IndicatorKey.PE, IndicatorKey.PB}
+_GROWTH_INDICATORS = {IndicatorKey.ROE, IndicatorKey.REVENUE_YOY, IndicatorKey.NET_PROFIT_YOY}
 
 
 def _ensure_screener_runtime_deps(require_requests: bool = False) -> None:
@@ -251,6 +263,25 @@ def _tail_pair(series: pd.Series) -> Tuple[float | None, float | None]:
     return float(cleaned.iloc[-2]), float(cleaned.iloc[-1])
 
 
+def _to_float_or_none(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            if pd is not None and pd.isna(value):
+                return None
+        except Exception:
+            pass
+        return float(value)
+    text = str(value).strip().replace(",", "").replace("%", "")
+    if not text or text in {"-", "--", "nan", "None", "null", "N/A", "na"}:
+        return None
+    try:
+        return float(text)
+    except Exception:
+        return None
+
+
 def _max_lookback_for_conditions(conditions: Iterable[IndicatorKey]) -> int:
     mapping = {
         IndicatorKey.MA: 250,
@@ -260,6 +291,13 @@ def _max_lookback_for_conditions(conditions: Iterable[IndicatorKey]) -> int:
         IndicatorKey.BOLL: 120,
         IndicatorKey.VOL: 120,
         IndicatorKey.OBV: 250,
+        IndicatorKey.HEAT: 30,
+        IndicatorKey.PE: 30,
+        IndicatorKey.PB: 30,
+        IndicatorKey.PEG: 30,
+        IndicatorKey.ROE: 30,
+        IndicatorKey.REVENUE_YOY: 30,
+        IndicatorKey.NET_PROFIT_YOY: 30,
     }
     return max(mapping.get(condition, 250) for condition in conditions)
 
@@ -1247,6 +1285,69 @@ class StockScreenerService:
                 outputs=[IndicatorOutputMeta(key="obv", label="OBV")],
                 operators=[op.value for op in Operator],
             ),
+            IndicatorMeta(
+                key=IndicatorKey.HEAT,
+                name="市场热度（个股量比热度）",
+                category="热度",
+                summary="当前成交量 / 近 20 日平均成交量，值越大说明短期交易更活跃。",
+                params=[],
+                outputs=[IndicatorOutputMeta(key="value", label="Heat")],
+                operators=_SCALAR_OPERATORS,
+            ),
+            IndicatorMeta(
+                key=IndicatorKey.PE,
+                name="市盈率 PE",
+                category="估值",
+                summary="基于实时行情估值字段，适合做估值高低筛选。",
+                params=[],
+                outputs=[IndicatorOutputMeta(key="value", label="PE")],
+                operators=_SCALAR_OPERATORS,
+            ),
+            IndicatorMeta(
+                key=IndicatorKey.PB,
+                name="市净率 PB",
+                category="估值",
+                summary="基于实时行情估值字段，适合和 ROE 组合做估值质量筛选。",
+                params=[],
+                outputs=[IndicatorOutputMeta(key="value", label="PB")],
+                operators=_SCALAR_OPERATORS,
+            ),
+            IndicatorMeta(
+                key=IndicatorKey.PEG,
+                name="PEG（估算）",
+                category="估值",
+                summary="按 PEG=PE/净利润同比(%) 估算，净利润同比<=0 或缺失时记为不可用。",
+                params=[],
+                outputs=[IndicatorOutputMeta(key="value", label="PEG")],
+                operators=_SCALAR_OPERATORS,
+            ),
+            IndicatorMeta(
+                key=IndicatorKey.ROE,
+                name="净资产收益率 ROE",
+                category="基本面",
+                summary="来源于基本面聚合中的 growth 数据块，当前以 A 股可用性最佳。",
+                params=[],
+                outputs=[IndicatorOutputMeta(key="value", label="ROE")],
+                operators=_SCALAR_OPERATORS,
+            ),
+            IndicatorMeta(
+                key=IndicatorKey.REVENUE_YOY,
+                name="营收同比增长率",
+                category="基本面",
+                summary="来源于基本面聚合中的 revenue_yoy 字段（同比%）。",
+                params=[],
+                outputs=[IndicatorOutputMeta(key="value", label="Revenue YoY")],
+                operators=_SCALAR_OPERATORS,
+            ),
+            IndicatorMeta(
+                key=IndicatorKey.NET_PROFIT_YOY,
+                name="净利润同比增长率",
+                category="基本面",
+                summary="来源于基本面聚合中的 net_profit_yoy 字段（同比%）。",
+                params=[],
+                outputs=[IndicatorOutputMeta(key="value", label="Net Profit YoY")],
+                operators=_SCALAR_OPERATORS,
+            ),
         ]
 
     def _build_cn_auto_board_scopes(self, limit_per_type: int = 10) -> List[Dict[str, Any]]:
@@ -2035,11 +2136,29 @@ class StockScreenerService:
         lookback = request.lookback_days or 250
         universe = self._build_universe(request)
         parsed_formula: Optional[FormulaParseResult] = None
-        if request.mode == ScreenerMode.FORMULA and request.formula:
+        required_indicators: set[IndicatorKey] = set()
+        scalar_coverage: Dict[IndicatorKey, Dict[str, int]] = {}
+        scalar_coverage_lock: Optional[threading.Lock] = None
+        is_formula_mode = request.mode in (ScreenerMode.FORMULA, ScreenerMode.HYBRID)
+        is_condition_mode = request.mode in (ScreenerMode.CONDITION, ScreenerMode.HYBRID)
+
+        if is_formula_mode and request.formula:
             parsed_formula = self._formula_engine.parse(request.formula)
             lookback = max(lookback, parsed_formula.estimated_lookback)
-        else:
-            lookback = max(lookback, _max_lookback_for_conditions([c.indicator for c in request.conditions or []]))
+
+        if is_condition_mode:
+            required_indicators = self._collect_condition_indicators(request.conditions or [])
+            lookback = max(lookback, _max_lookback_for_conditions(required_indicators))
+            tracked_scalar_indicators = sorted(
+                [indicator for indicator in required_indicators if indicator in _SCALAR_INDICATORS],
+                key=lambda item: item.value,
+            )
+            if tracked_scalar_indicators:
+                scalar_coverage = {
+                    indicator: {"available": 0, "missing": 0}
+                    for indicator in tracked_scalar_indicators
+                }
+                scalar_coverage_lock = threading.Lock()
         total_candidates = len(universe)
         scan_workers = self._resolve_scan_workers(total_candidates)
         started_at = time.perf_counter()
@@ -2066,9 +2185,31 @@ class StockScreenerService:
         scanned = 0
         with ThreadPoolExecutor(max_workers=scan_workers) as executor:
             futures = [
-                executor.submit(self._evaluate_stock, basic, request, lookback, None, history_source_hint, history_hint_lock)
+                executor.submit(
+                    self._evaluate_stock,
+                    basic,
+                    request,
+                    lookback,
+                    None,
+                    history_source_hint,
+                    history_hint_lock,
+                    required_indicators,
+                    scalar_coverage,
+                    scalar_coverage_lock,
+                )
                 if parsed_formula is None else
-                executor.submit(self._evaluate_stock, basic, request, lookback, parsed_formula, history_source_hint, history_hint_lock)
+                executor.submit(
+                    self._evaluate_stock,
+                    basic,
+                    request,
+                    lookback,
+                    parsed_formula,
+                    history_source_hint,
+                    history_hint_lock,
+                    required_indicators,
+                    scalar_coverage,
+                    scalar_coverage_lock,
+                )
                 for basic in universe
             ]
             for future in as_completed(futures):
@@ -2111,6 +2252,17 @@ class StockScreenerService:
                 "[Screener] speed target miss: total=%s elapsed=%.2fs (< 60s expected for 50 stocks)",
                 total_candidates,
                 elapsed,
+            )
+        if is_condition_mode and scalar_coverage:
+            coverage_summary = ", ".join(
+                f"{indicator.value}:available={stats.get('available', 0)},missing={stats.get('missing', 0)}"
+                for indicator, stats in sorted(scalar_coverage.items(), key=lambda item: item[0].value)
+            )
+            logger.info(
+                "[Screener] scalar indicator coverage: market=%s total=%s %s",
+                request.market.value,
+                total_candidates,
+                coverage_summary,
             )
         return ScreenerScanResponse(total=total, results=sliced, csv=csv_payload)
 
@@ -2382,6 +2534,100 @@ class StockScreenerService:
         except Exception:
             return []
 
+    @staticmethod
+    def _collect_condition_indicators(conditions: List[IndicatorCondition]) -> set[IndicatorKey]:
+        required: set[IndicatorKey] = set()
+        for condition in conditions:
+            required.add(condition.indicator)
+            if condition.compare_to.type == CompareType.INDICATOR and condition.compare_to.indicator is not None:
+                required.add(condition.compare_to.indicator)
+        return required
+
+    @staticmethod
+    def _extract_context_data_block(context: Any, block_name: str) -> Dict[str, Any]:
+        if not isinstance(context, dict):
+            return {}
+        block = context.get(block_name)
+        if not isinstance(block, dict):
+            return {}
+        payload = block.get("data")
+        return payload if isinstance(payload, dict) else {}
+
+    def _build_scalar_indicator_values(
+        self,
+        stock_code: str,
+        required_indicators: set[IndicatorKey],
+        heat: Optional[float],
+    ) -> Dict[IndicatorKey, Optional[float]]:
+        scalar_values: Dict[IndicatorKey, Optional[float]] = {
+            IndicatorKey.HEAT: heat,
+        }
+        requested_scalar_indicators = {indicator for indicator in required_indicators if indicator in _SCALAR_INDICATORS}
+        if not requested_scalar_indicators:
+            return scalar_values
+
+        manager = self._get_manager()
+        requires_growth = bool(requested_scalar_indicators.intersection(_GROWTH_INDICATORS | {IndicatorKey.PEG}))
+        requires_valuation = bool(requested_scalar_indicators.intersection(_VALUATION_INDICATORS | {IndicatorKey.PEG}))
+        pe_ratio: Optional[float] = None
+        net_profit_yoy: Optional[float] = None
+
+        if requires_growth:
+            try:
+                context = manager.get_fundamental_context(stock_code)
+            except Exception as exc:
+                logger.debug("[Screener] failed to load fundamental context for %s: %s", stock_code, exc, exc_info=True)
+                context = {}
+
+            valuation_payload = self._extract_context_data_block(context, "valuation")
+            growth_payload = self._extract_context_data_block(context, "growth")
+
+            pe_ratio = _to_float_or_none(valuation_payload.get("pe_ratio"))
+            scalar_values[IndicatorKey.PE] = pe_ratio
+            scalar_values[IndicatorKey.PB] = _to_float_or_none(valuation_payload.get("pb_ratio"))
+            scalar_values[IndicatorKey.ROE] = _to_float_or_none(growth_payload.get("roe"))
+            scalar_values[IndicatorKey.REVENUE_YOY] = _to_float_or_none(growth_payload.get("revenue_yoy"))
+            net_profit_yoy = _to_float_or_none(growth_payload.get("net_profit_yoy"))
+            scalar_values[IndicatorKey.NET_PROFIT_YOY] = net_profit_yoy
+        elif requires_valuation:
+            try:
+                quote = manager.get_realtime_quote(stock_code)
+            except Exception as exc:
+                logger.debug("[Screener] failed to load realtime quote for %s: %s", stock_code, exc, exc_info=True)
+                quote = None
+            pe_ratio = _to_float_or_none(getattr(quote, "pe_ratio", None)) if quote is not None else None
+            scalar_values[IndicatorKey.PE] = pe_ratio
+            scalar_values[IndicatorKey.PB] = _to_float_or_none(getattr(quote, "pb_ratio", None)) if quote is not None else None
+
+        if IndicatorKey.PEG in requested_scalar_indicators:
+            if net_profit_yoy is None and requires_valuation:
+                try:
+                    context = manager.get_fundamental_context(stock_code)
+                except Exception as exc:
+                    logger.debug(
+                        "[Screener] failed to load fundamental context for PEG %s: %s",
+                        stock_code,
+                        exc,
+                        exc_info=True,
+                    )
+                    context = {}
+                growth_payload = self._extract_context_data_block(context, "growth")
+                net_profit_yoy = _to_float_or_none(growth_payload.get("net_profit_yoy"))
+                scalar_values[IndicatorKey.NET_PROFIT_YOY] = net_profit_yoy
+                if pe_ratio is None:
+                    valuation_payload = self._extract_context_data_block(context, "valuation")
+                    pe_ratio = _to_float_or_none(valuation_payload.get("pe_ratio"))
+                    scalar_values[IndicatorKey.PE] = pe_ratio
+                    if IndicatorKey.PB in requested_scalar_indicators and IndicatorKey.PB not in scalar_values:
+                        scalar_values[IndicatorKey.PB] = _to_float_or_none(valuation_payload.get("pb_ratio"))
+
+            peg_value = None
+            if pe_ratio is not None and net_profit_yoy is not None and net_profit_yoy > 0:
+                peg_value = pe_ratio / net_profit_yoy
+            scalar_values[IndicatorKey.PEG] = peg_value
+
+        return scalar_values
+
     def _evaluate_stock(
         self,
         basic: StockBasic,
@@ -2390,6 +2636,9 @@ class StockScreenerService:
         parsed_formula: Optional[FormulaParseResult] = None,
         history_source_hint: Optional[Dict[str, str]] = None,
         history_hint_lock: Optional[threading.Lock] = None,
+        required_indicators: Optional[set[IndicatorKey]] = None,
+        scalar_coverage: Optional[Dict[IndicatorKey, Dict[str, int]]] = None,
+        scalar_coverage_lock: Optional[threading.Lock] = None,
     ) -> Optional[ScreenerScanResultItem]:
         preferred_source: Optional[str] = None
         if history_source_hint is not None and history_hint_lock is not None:
@@ -2424,15 +2673,33 @@ class StockScreenerService:
         if request.volume_heat_ratio is not None and heat is not None and heat < request.volume_heat_ratio:
             return None
 
-        if request.mode == ScreenerMode.FORMULA and request.formula:
+        is_formula_mode = request.mode in (ScreenerMode.FORMULA, ScreenerMode.HYBRID)
+        is_condition_mode = request.mode in (ScreenerMode.CONDITION, ScreenerMode.HYBRID)
+        matched: List[str] = []
+
+        if is_formula_mode and request.formula:
             formula_match = self._evaluate_formula(df, request.formula, request.formula_name, parsed_formula)
             if not formula_match[0]:
                 return None
-            matched = formula_match[1]
-        else:
-            ok, matched = self._evaluate_conditions(df, request.conditions or [])
+            matched.extend(formula_match[1])
+
+        if is_condition_mode:
+            condition_indicators = required_indicators or self._collect_condition_indicators(request.conditions or [])
+            scalar_values = self._build_scalar_indicator_values(basic.code, condition_indicators, heat)
+            if scalar_coverage and scalar_coverage_lock is not None:
+                with scalar_coverage_lock:
+                    for indicator in scalar_coverage.keys():
+                        if scalar_values.get(indicator) is None:
+                            scalar_coverage[indicator]["missing"] = scalar_coverage[indicator].get("missing", 0) + 1
+                        else:
+                            scalar_coverage[indicator]["available"] = scalar_coverage[indicator].get("available", 0) + 1
+            ok, condition_matched = self._evaluate_conditions(df, request.conditions or [], scalar_values)
             if not ok:
                 return None
+            matched.extend(condition_matched)
+
+        if not matched:
+            return None
 
         last_close = float(df["close"].dropna().iloc[-1]) if "close" in df else 0.0
         return ScreenerScanResultItem(
@@ -2476,13 +2743,14 @@ class StockScreenerService:
         self,
         df: pd.DataFrame,
         conditions: List[IndicatorCondition],
+        scalar_values: Optional[Dict[IndicatorKey, Optional[float]]] = None,
     ) -> Tuple[bool, List[str]]:
         computed_cache: Dict[tuple, Dict[str, pd.Series]] = {}
         matched_desc: List[str] = []
         overall: Optional[bool] = None
 
         for condition in conditions:
-            left_series = self._get_indicator_series(df, condition, computed_cache)
+            left_series = self._get_indicator_series(df, condition, computed_cache, scalar_values)
             if left_series is None:
                 return False, []
 
@@ -2502,6 +2770,7 @@ class StockScreenerService:
                         logic_with_previous=condition.logic_with_previous,
                     ),
                     computed_cache,
+                    scalar_values,
                 )
                 if target_series is None:
                     return False, []
@@ -2523,7 +2792,16 @@ class StockScreenerService:
         df: pd.DataFrame,
         condition: IndicatorCondition,
         cache: Dict[tuple, Dict[str, pd.Series]],
+        scalar_values: Optional[Dict[IndicatorKey, Optional[float]]] = None,
     ) -> Optional[pd.Series]:
+        if condition.indicator in _SCALAR_INDICATORS:
+            scalar_value = scalar_values.get(condition.indicator) if scalar_values else None
+            scalar_float = _to_float_or_none(scalar_value)
+            if scalar_float is None:
+                return None
+            _ensure_screener_runtime_deps()
+            return pd.Series([scalar_float], dtype="float64")
+
         key = (condition.indicator, tuple(sorted(condition.params.items())))
         if key not in cache:
             cache[key] = _compute_indicator(condition.indicator, df, condition.params)
@@ -2587,6 +2865,13 @@ class StockScreenerService:
             IndicatorKey.BOLL: "mid",
             IndicatorKey.VOL: "volume",
             IndicatorKey.OBV: "obv",
+            IndicatorKey.HEAT: "value",
+            IndicatorKey.PE: "value",
+            IndicatorKey.PB: "value",
+            IndicatorKey.PEG: "value",
+            IndicatorKey.ROE: "value",
+            IndicatorKey.REVENUE_YOY: "value",
+            IndicatorKey.NET_PROFIT_YOY: "value",
         }
         return mapping.get(indicator, "value")
 

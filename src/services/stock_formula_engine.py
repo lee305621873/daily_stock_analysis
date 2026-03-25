@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import difflib
 import operator
 import re
 from dataclasses import dataclass
@@ -36,6 +37,8 @@ class FormulaParseResult:
     tree: ast.Expression
     referenced_fields: List[str]
     functions: List[str]
+    function_usage: Dict[str, int]
+    expression_nodes: int
     estimated_lookback: int
 
 
@@ -692,14 +695,20 @@ class StockFormulaEngine:
 
     def validate(self, formula: str) -> FormulaValidationResponse:
         parsed = self.parse(formula)
+        complexity_score, complexity_level = self._estimate_complexity(parsed)
         return FormulaValidationResponse(
             valid=True,
             normalized_formula=parsed.normalized_formula,
             referenced_fields=parsed.referenced_fields,
             functions=parsed.functions,
+            function_usage=parsed.function_usage,
+            expression_nodes=parsed.expression_nodes,
+            complexity_score=complexity_score,
+            complexity_level=complexity_level,
             message="公式校验通过",
             estimated_lookback=parsed.estimated_lookback,
             warnings=self._build_warnings(parsed),
+            suggestions=self._build_suggestions(parsed, complexity_level),
         )
 
     def parse(self, formula: str) -> FormulaParseResult:
@@ -714,9 +723,13 @@ class StockFormulaEngine:
 
         fields: Set[str] = set()
         functions: Set[str] = set()
+        function_usage: Dict[str, int] = {}
+        expression_nodes = 0
         estimated_lookback = self.DEFAULT_LOOKBACK
 
         for node in ast.walk(tree):
+            if not isinstance(node, (ast.Load, ast.Expression)):
+                expression_nodes += 1
             if not isinstance(
                 node,
                 (
@@ -730,6 +743,7 @@ class StockFormulaEngine:
                     ast.Load,
                     ast.Constant,
                     ast.Attribute,
+                    ast.keyword,
                     ast.And,
                     ast.Or,
                     ast.Not,
@@ -760,6 +774,12 @@ class StockFormulaEngine:
                 elif upper_name in {"TRUE", "FALSE"}:
                     continue
                 else:
+                    candidates = sorted(FIELD_NAMES.union(FUNCTIONS.keys()))
+                    maybe = difflib.get_close_matches(upper_name, candidates, n=3, cutoff=0.6)
+                    if maybe:
+                        raise FormulaValidationError(
+                            f"Unsupported identifier: {node.id}. Did you mean: {', '.join(maybe)}"
+                        )
                     raise FormulaValidationError(f"Unsupported identifier: {node.id}")
 
             if isinstance(node, ast.Call):
@@ -767,8 +787,14 @@ class StockFormulaEngine:
                     raise FormulaValidationError("Only direct function calls are supported")
                 func_name = node.func.id.upper()
                 if func_name not in FUNCTIONS:
+                    maybe = difflib.get_close_matches(func_name, list(FUNCTIONS.keys()), n=3, cutoff=0.5)
+                    if maybe:
+                        raise FormulaValidationError(
+                            f"Unsupported function: {func_name}. Did you mean: {', '.join(maybe)}"
+                        )
                     raise FormulaValidationError(f"Unsupported function: {func_name}")
                 functions.add(func_name)
+                function_usage[func_name] = function_usage.get(func_name, 0) + 1
                 estimated_lookback = max(estimated_lookback, self._estimate_call_lookback(func_name, node))
 
             if isinstance(node, ast.Attribute):
@@ -780,6 +806,8 @@ class StockFormulaEngine:
             tree=tree,
             referenced_fields=sorted(fields),
             functions=sorted(functions),
+            function_usage={name: function_usage[name] for name in sorted(function_usage)},
+            expression_nodes=expression_nodes,
             estimated_lookback=estimated_lookback,
         )
 
@@ -799,6 +827,8 @@ class StockFormulaEngine:
 
     def _normalize_formula(self, formula: str) -> str:
         normalized = (formula or "").strip()
+        normalized = normalized.replace("，", ",").replace("（", "(").replace("）", ")")
+        normalized = normalized.replace("＋", "+").replace("－", "-").replace("×", "*").replace("÷", "/")
         normalized = re.sub(r"\bAND\b", " and ", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bOR\b", " or ", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bNOT\b", " not ", normalized, flags=re.IGNORECASE)
@@ -812,9 +842,43 @@ class StockFormulaEngine:
         warnings: List[str] = []
         if parsed.estimated_lookback >= 250:
             warnings.append("该公式默认建议至少加载 250 个交易日数据，以降低边界误差。")
+        if parsed.estimated_lookback >= 600:
+            warnings.append("公式依赖较长历史窗口，扫描耗时会明显上升，建议结合扫描上限使用。")
+        if parsed.expression_nodes >= 100:
+            warnings.append("公式结构较复杂，建议先拆分验证子条件，避免调试困难。")
+        repeated_funcs = [name for name, count in parsed.function_usage.items() if count >= 4]
+        if repeated_funcs:
+            warnings.append(f"以下函数重复调用较多：{', '.join(repeated_funcs)}，可考虑先中间化或简化表达式。")
         if not parsed.referenced_fields:
             warnings.append("公式未直接引用 OHLCV 字段，请确认函数参数书写正确。")
         return warnings
+
+    def _build_suggestions(self, parsed: FormulaParseResult, complexity_level: str) -> List[str]:
+        suggestions: List[str] = []
+        if complexity_level == "high":
+            suggestions.append("当前复杂度较高，可先将条件拆成两段分别验证后再组合。")
+        if "CROSS" not in parsed.functions:
+            suggestions.append("若策略关注拐点信号，可尝试引入 CROSS() 与趋势条件组合。")
+        if parsed.estimated_lookback > 500:
+            suggestions.append("建议在扫描配置中设置“扫描上限”，减少长窗口公式的整体耗时。")
+        if len(parsed.functions) <= 1:
+            suggestions.append("当前公式函数较少，可叠加量能或波动类函数提升筛选辨识度。")
+        if not parsed.referenced_fields:
+            suggestions.append("请检查参数是否引用了 CLOSE/HIGH/LOW/VOL 等字段，避免纯常量表达式。")
+        return suggestions[:4]
+
+    def _estimate_complexity(self, parsed: FormulaParseResult) -> tuple[int, str]:
+        func_weight = sum(parsed.function_usage.values()) * 6
+        structure_weight = parsed.expression_nodes
+        lookback_weight = max(0, parsed.estimated_lookback - 250) // 25
+        score = max(1, func_weight + structure_weight + lookback_weight)
+        if score < 45:
+            level = "low"
+        elif score < 90:
+            level = "medium"
+        else:
+            level = "high"
+        return score, level
 
     def _estimate_call_lookback(self, func_name: str, call: ast.Call) -> int:
         if func_name in {"REF", "MA", "EMA", "SMA", "WMA", "HHV", "LLV", "SUM", "AVG", "STD", "COUNT", "EVERY", "EXIST", "ROC"}:

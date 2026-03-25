@@ -1,8 +1,22 @@
-export type IndicatorKey = 'MA' | 'MACD' | 'RSI' | 'KDJ' | 'BOLL' | 'VOL' | 'OBV';
+export type IndicatorKey =
+  | 'MA'
+  | 'MACD'
+  | 'RSI'
+  | 'KDJ'
+  | 'BOLL'
+  | 'VOL'
+  | 'OBV'
+  | 'HEAT'
+  | 'PE'
+  | 'PB'
+  | 'PEG'
+  | 'ROE'
+  | 'REVENUE_YOY'
+  | 'NET_PROFIT_YOY';
 export type Operator = '>' | '>=' | '<' | '<=' | '=' | 'cross_up' | 'cross_down';
 export type LogicOp = 'AND' | 'OR';
 export type MarketType = 'cn' | 'hk' | 'us';
-export type ScreenerMode = 'condition' | 'formula';
+export type ScreenerMode = 'condition' | 'formula' | 'hybrid';
 export type ScreenerScopeKind = 'full_market' | 'preset_pool' | 'board' | 'board_dynamic' | 'custom_pool';
 export type ScreenerBoardType = 'industry' | 'concept';
 export type ScreenerTaskStatus = 'pending' | 'processing' | 'completed' | 'failed';
@@ -196,7 +210,12 @@ export interface FormulaValidationResponse {
   normalizedFormula: string;
   referencedFields: string[];
   functions: string[];
+  functionUsage?: Record<string, number>;
+  expressionNodes?: number;
+  complexityScore?: number;
+  complexityLevel?: 'low' | 'medium' | 'high' | string;
   message: string;
   estimatedLookback: number;
   warnings: string[];
+  suggestions?: string[];
 }

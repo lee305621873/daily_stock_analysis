@@ -32,6 +32,13 @@ const FALLBACK_INDICATORS: IndicatorMeta[] = [
   { key: 'BOLL', name: 'BOLL 布林带', category: '通道', summary: '用上下轨判断波动区间，适合看突破、收口和回归均值。', params: [{ name: 'period', label: '周期', type: 'int', default: 20 }, { name: 'multiplier', label: '倍数', type: 'float', default: 2 }], outputs: [{ key: 'upper', label: '上轨' }, { key: 'mid', label: '中轨' }, { key: 'lower', label: '下轨' }, { key: 'bandwidth', label: '带宽' }, { key: 'percent_b', label: '%B' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
   { key: 'VOL', name: 'VOL 成交量', category: '能量', summary: '比较当前成交量和均量，常用于判断放量突破或缩量整理。', params: [{ name: 'period', label: '均量周期', type: 'int', default: 5 }], outputs: [{ key: 'volume', label: '量' }, { key: 'vol_ma', label: '均量' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
   { key: 'OBV', name: 'OBV 能量潮', category: '能量', summary: '把涨跌方向与成交量累计起来，适合看资金流入流出趋势。', params: [], outputs: [{ key: 'obv', label: 'OBV' }], operators: ['>', '>=', '<', '<=', '=', 'cross_up', 'cross_down'] },
+  { key: 'HEAT', name: '市场热度（个股量比热度）', category: '热度', summary: '当前成交量 / 近 20 日平均成交量，值越大说明短期交易更活跃。', params: [], outputs: [{ key: 'value', label: 'Heat' }], operators: ['>', '>=', '<', '<=', '='] },
+  { key: 'PE', name: '市盈率 PE', category: '估值', summary: '基于实时行情估值字段，适合做估值高低筛选。', params: [], outputs: [{ key: 'value', label: 'PE' }], operators: ['>', '>=', '<', '<=', '='] },
+  { key: 'PB', name: '市净率 PB', category: '估值', summary: '基于实时行情估值字段，适合和 ROE 组合做估值质量筛选。', params: [], outputs: [{ key: 'value', label: 'PB' }], operators: ['>', '>=', '<', '<=', '='] },
+  { key: 'PEG', name: 'PEG（估算）', category: '估值', summary: '按 PEG=PE/净利润同比(%) 估算，净利润同比<=0 或缺失时记为不可用。', params: [], outputs: [{ key: 'value', label: 'PEG' }], operators: ['>', '>=', '<', '<=', '='] },
+  { key: 'ROE', name: '净资产收益率 ROE', category: '基本面', summary: '来源于基本面聚合中的 growth 数据块，当前以 A 股可用性最佳。', params: [], outputs: [{ key: 'value', label: 'ROE' }], operators: ['>', '>=', '<', '<=', '='] },
+  { key: 'REVENUE_YOY', name: '营收同比增长率', category: '基本面', summary: '来源于基本面聚合中的 revenue_yoy 字段（同比%）。', params: [], outputs: [{ key: 'value', label: 'Revenue YoY' }], operators: ['>', '>=', '<', '<=', '='] },
+  { key: 'NET_PROFIT_YOY', name: '净利润同比增长率', category: '基本面', summary: '来源于基本面聚合中的 net_profit_yoy 字段（同比%）。', params: [], outputs: [{ key: 'value', label: 'Net Profit YoY' }], operators: ['>', '>=', '<', '<=', '='] },
 ];
 
 const FORMULA_TEMPLATES = [
@@ -62,6 +69,15 @@ const FORMULA_TEMPLATES = [
   { label: '金叉后二次确认', value: 'EXIST(CROSS(MA(CLOSE,5), MA(CLOSE,20)), 5) AND CLOSE > MA(CLOSE,20)' },
   { label: '短线超跌反转（3 日 RSI）', value: 'CLOSE < LLV(LOW,5) * 1.02 AND RSI(CLOSE,3) < 15 AND CLOSE > REF(CLOSE,1)' },
 ];
+
+const CUSTOM_FORMULA_STORAGE_KEY = 'dsa.screener.custom-formulas.v1';
+
+interface CustomFormulaTemplate {
+  id: string;
+  label: string;
+  value: string;
+  updatedAt: string;
+}
 
 function createDefaultCondition(indicator: IndicatorKey): ScreenerCondition {
   return {
@@ -118,7 +134,10 @@ interface ConditionRowProps {
 
 const ConditionRow: React.FC<ConditionRowProps> = ({ metaList, value, onChange, onRemove, isFirst }) => {
   const meta = metaList.find((item) => item.key === value.indicator) ?? metaList[0];
-  const compareMeta = metaList.find((item) => item.key === value.compareTo.indicator);
+  const compareIndicator = value.compareTo.indicator || metaList[0]?.key || meta?.key || '';
+  const compareMeta = metaList.find((item) => item.key === compareIndicator);
+  const isCrossOperator = value.operator === 'cross_up' || value.operator === 'cross_down';
+  const compareType = isCrossOperator ? 'indicator' : value.compareTo.type;
 
   const update = (patch: Partial<ScreenerCondition>) => {
     onChange({ ...value, ...patch });
@@ -161,11 +180,11 @@ const ConditionRow: React.FC<ConditionRowProps> = ({ metaList, value, onChange, 
           />
         ))}
 
-        {meta?.outputs.length ? (
+        {meta?.outputs.length && meta.outputs.length > 1 ? (
           <Select
             className="xl:w-40"
             label="输出"
-            labelSuffix={<HelpHint content="不同指标可能有多个输出值，例如 MACD 的 Diff、Dea、柱子。" />}
+            labelSuffix={<HelpHint content={HINT_TEXT.conditionOutput} />}
             value={value.output || meta.outputs[0].key}
             onChange={(next) => update({ output: next })}
             options={meta.outputs.map((output) => ({ value: output.key, label: output.label }))}
@@ -175,51 +194,79 @@ const ConditionRow: React.FC<ConditionRowProps> = ({ metaList, value, onChange, 
         <Select
           className="xl:w-40"
           label="比较"
-          labelSuffix={<HelpHint content="支持大于、小于、等于，以及 cross_up/cross_down 金叉死叉判断。" />}
+          labelSuffix={<HelpHint content={HINT_TEXT.conditionOperator} />}
           value={value.operator}
-          onChange={(next) => update({ operator: next as Operator })}
+          onChange={(next) => {
+            const nextOperator = next as Operator;
+            if ((nextOperator === 'cross_up' || nextOperator === 'cross_down') && value.compareTo.type !== 'indicator') {
+              update({
+                operator: nextOperator,
+                compareTo: {
+                  ...value.compareTo,
+                  type: 'indicator',
+                  indicator: value.compareTo.indicator || metaList[0]?.key,
+                },
+              });
+              return;
+            }
+            update({ operator: nextOperator });
+          }}
           options={(meta?.operators || []).map((operator) => ({ value: operator, label: operator }))}
         />
 
-        <Select
-          className="xl:w-40"
-          label="右侧"
-          labelSuffix={<HelpHint content="阈值表示和固定数值比较；另一指标表示两个指标之间做对比。" />}
-          value={value.compareTo.type}
-          onChange={(next) => update({
-            compareTo: next === 'indicator'
-              ? { ...value.compareTo, type: 'indicator', indicator: value.compareTo.indicator || metaList[0]?.key }
-              : { ...value.compareTo, type: 'value', value: value.compareTo.value ?? 0 },
-          })}
-          options={[
-            { value: 'value', label: '阈值' },
-            { value: 'indicator', label: '另一指标' },
-          ]}
-        />
+        {isCrossOperator ? (
+          <div className="xl:w-40">
+            <label className="mb-2 inline-flex items-center gap-2 text-sm font-medium text-foreground">
+              <span>右侧</span>
+              <HelpHint content={HINT_TEXT.conditionCrossRight} />
+            </label>
+            <div className="h-11 rounded-xl border border-white/10 bg-elevated/35 px-3 text-sm text-secondary-text flex items-center">
+              另一指标
+            </div>
+          </div>
+        ) : (
+          <Select
+            className="xl:w-40"
+            label="右侧"
+            labelSuffix={<HelpHint content={HINT_TEXT.conditionRightSide} />}
+            value={value.compareTo.type}
+            onChange={(next) => update({
+              compareTo: next === 'indicator'
+                ? { ...value.compareTo, type: 'indicator', indicator: value.compareTo.indicator || metaList[0]?.key }
+                : { ...value.compareTo, type: 'value', value: value.compareTo.value ?? 0 },
+            })}
+            options={[
+              { value: 'value', label: '阈值' },
+              { value: 'indicator', label: '另一指标' },
+            ]}
+          />
+        )}
 
-        {value.compareTo.type === 'indicator' ? (
+        {compareType === 'indicator' ? (
           <>
             <Select
               className="xl:w-52"
               label="对比指标"
               labelSuffix={compareMeta?.summary ? <HelpHint content={compareMeta.summary} /> : undefined}
-              value={value.compareTo.indicator || metaList[0]?.key || ''}
+              value={compareIndicator}
               onChange={(next) => update({ compareTo: { ...value.compareTo, indicator: next as IndicatorKey } })}
               options={metaList.map((item) => ({ value: item.key, label: item.name }))}
             />
-            <Select
-              className="xl:w-40"
-              label="对比输出"
-              value={value.compareTo.output || compareMeta?.outputs[0]?.key || ''}
-              onChange={(next) => update({ compareTo: { ...value.compareTo, output: next } })}
-              options={(compareMeta?.outputs || []).map((output) => ({ value: output.key, label: output.label }))}
-            />
+            {compareMeta?.outputs.length && compareMeta.outputs.length > 1 ? (
+              <Select
+                className="xl:w-40"
+                label="对比输出"
+                value={value.compareTo.output || compareMeta.outputs[0].key}
+                onChange={(next) => update({ compareTo: { ...value.compareTo, output: next } })}
+                options={compareMeta.outputs.map((output) => ({ value: output.key, label: output.label }))}
+              />
+            ) : null}
           </>
         ) : (
           <Input
             className="xl:w-40"
             label="阈值"
-            labelSuffix={<HelpHint content="这里填固定门槛值，例如 RSI 小于 30、量比大于 1.5。" />}
+            labelSuffix={<HelpHint content={HINT_TEXT.conditionThreshold} />}
             type="number"
             value={value.compareTo.value ?? ''}
             onChange={(event) => update({ compareTo: { ...value.compareTo, value: Number(event.target.value) } })}
@@ -252,6 +299,24 @@ const MARKET_PLACEHOLDERS: Record<MarketType, string> = {
   us: '请输入美股代码，如 AAPL,MSFT,NVDA',
 };
 
+const HINT_TEXT = {
+  conditionOutput: '仅多输出指标显示该项。例：MACD 可选 Diff/Dea/柱子；RSI 单输出时会自动使用默认输出。',
+  conditionOperator: '支持数值比较与金叉/死叉。选择 cross_up/cross_down 时会自动切换为“指标对指标”。',
+  conditionCrossRight: '金叉/死叉必须比较两条指标序列，不能与固定阈值比较。',
+  conditionRightSide: '阈值：与固定数字比较；另一指标：两条指标（或输出）之间比较。',
+  conditionThreshold: '示例：RSI < 30、PE < 25、热度 > 1.5。建议先用宽条件，再逐步收紧。',
+  market: '先选市场再选范围。A 股支持真实行业/概念板块；港股/美股优先使用维护行业池并持续扩充。',
+  scope: '范围决定候选股票池。全市场适合摸排，板块适合主题扫描，自定义适合小样本快速验证。',
+  mode: '条件模式=可视化条件；公式模式=DSL 规则；组合模式=公式+条件同时生效，结果取交集。',
+  pool: '自定义股票池支持逗号、空格、换行。范围预览是候选代码展示，扫描时按完整范围执行。',
+  boardSearch: '输入关键字过滤板块，如：半导体、创新药、金融、算力、AI。',
+  boardSelect: '选择后会加载预览；开始扫描时使用该板块完整成分股，不受预览条数限制。',
+  heat: '热度=最新成交量/近20日均量。常用阈值：1.2（温和放量）、1.5（明显放量）、2.0（强放量）。',
+  scanLimit: '限制参与扫描的股票数量以控制耗时。调试建议 100-300，正式跑全市场可留空。',
+  sortBy: '决定命中结果优先级。按热度适合找活跃标的；按价格/代码适合列表巡检。',
+  sortDir: '降序优先看高值，升序优先看低值或代码顺序。',
+} as const;
+
 function buildFallbackScopes(market: MarketType): ScreenerScopeOption[] {
   if (market === 'cn') {
     return [{ key: 'all_market', market, label: 'A 股全市场', description: MARKET_HINTS.cn, kind: 'full_market', estimatedCount: null, previewCodes: [] }];
@@ -271,12 +336,20 @@ function getMarketLabel(market: MarketType): string {
 }
 
 const HelpHint: React.FC<{ content: string }> = ({ content }) => (
-  <span
-    title={content}
-    aria-label={content}
-    className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/12 bg-white/6 text-[11px] font-semibold text-secondary-text cursor-help"
-  >
-    ?
+  <span className="group relative inline-flex">
+    <span
+      tabIndex={0}
+      aria-label={content}
+      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/12 bg-white/6 text-[11px] font-semibold text-secondary-text cursor-help outline-none"
+    >
+      ?
+    </span>
+    <span
+      role="tooltip"
+      className="pointer-events-none absolute left-1/2 top-full z-[80] mt-2 w-72 -translate-x-1/2 rounded-lg border border-white/15 bg-slate-950/95 px-3 py-2 text-xs leading-5 text-slate-100 shadow-xl shadow-black/40 opacity-0 invisible transition-opacity duration-150 group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible"
+    >
+      {content}
+    </span>
   </span>
 );
 
@@ -292,9 +365,13 @@ const StockScreenerPage: React.FC = () => {
   });
   const [boardCatalog, setBoardCatalog] = useState<Record<string, ScreenerBoardOption[]>>({});
   const [conditions, setConditions] = useState<ScreenerCondition[]>([createDefaultCondition(FALLBACK_INDICATORS[0].key)]);
-  const [scanMode, setScanMode] = useState<ScreenerMode>('formula');
+  const [scanMode, setScanMode] = useState<ScreenerMode>('hybrid');
   const [formulaName, setFormulaName] = useState(FORMULA_TEMPLATES[0].label);
   const [formulaText, setFormulaText] = useState(FORMULA_TEMPLATES[0].value);
+  const [selectedOfficialTemplate, setSelectedOfficialTemplate] = useState('');
+  const [customFormulaTemplates, setCustomFormulaTemplates] = useState<CustomFormulaTemplate[]>([]);
+  const [selectedCustomTemplateId, setSelectedCustomTemplateId] = useState('');
+  const [formulaEditorNotice, setFormulaEditorNotice] = useState<string | null>(null);
   const [formulaValidation, setFormulaValidation] = useState<FormulaValidationResponse | null>(null);
   const [formulaValidationError, setFormulaValidationError] = useState<ParsedApiError | null>(null);
   const [market, setMarket] = useState<MarketType>('cn');
@@ -319,31 +396,48 @@ const StockScreenerPage: React.FC = () => {
 
   useEffect(() => {
     const loadMetadata = async () => {
-      try {
-        const [indicatorData, functionData, scopeData] = await Promise.all([
-          screenerApi.getIndicators(),
-          screenerApi.getFormulaFunctions(),
-          screenerApi.getScopes(),
-        ]);
-        if (indicatorData.length > 0) {
-          setIndicators(indicatorData);
-          setConditions([createDefaultCondition(indicatorData[0].key)]);
-        }
-        setFormulaFunctions(functionData);
+      const [indicatorResult, functionResult, scopeResult] = await Promise.allSettled([
+        screenerApi.getIndicators(),
+        screenerApi.getFormulaFunctions(),
+        screenerApi.getScopes(),
+      ]);
+
+      let hasError = false;
+      if (indicatorResult.status === 'fulfilled' && indicatorResult.value.length > 0) {
+        setIndicators(indicatorResult.value);
+        setConditions([createDefaultCondition(indicatorResult.value[0].key)]);
+      } else if (indicatorResult.status === 'rejected') {
+        console.error('Failed to load screener indicators:', indicatorResult.reason);
+        hasError = true;
+      }
+
+      if (functionResult.status === 'fulfilled') {
+        setFormulaFunctions(functionResult.value);
+      } else {
+        console.error('Failed to load screener formula functions:', functionResult.reason);
+        hasError = true;
+      }
+
+      if (scopeResult.status === 'fulfilled') {
         const groupedScopes: Record<MarketType, ScreenerScopeOption[]> = {
-          cn: scopeData.filter((item) => item.market === 'cn'),
-          hk: scopeData.filter((item) => item.market === 'hk'),
-          us: scopeData.filter((item) => item.market === 'us'),
+          cn: scopeResult.value.filter((item) => item.market === 'cn'),
+          hk: scopeResult.value.filter((item) => item.market === 'hk'),
+          us: scopeResult.value.filter((item) => item.market === 'us'),
         };
         setScopeCatalog({
           cn: groupedScopes.cn.length ? groupedScopes.cn : buildFallbackScopes('cn'),
           hk: groupedScopes.hk.length ? groupedScopes.hk : buildFallbackScopes('hk'),
           us: groupedScopes.us.length ? groupedScopes.us : buildFallbackScopes('us'),
         });
+      } else {
+        console.error('Failed to load screener scopes:', scopeResult.reason);
+        hasError = true;
+      }
+
+      if (hasError) {
+        setMetadataWarning('部分选股元数据加载失败，已对失败部分使用本地兜底。');
+      } else {
         setMetadataWarning(null);
-      } catch (error) {
-        console.error('Failed to load screener metadata:', error);
-        setMetadataWarning('指标、公式或扫描范围元数据加载失败，已回退为本地默认配置。');
       }
     };
     void loadMetadata();
@@ -451,6 +545,91 @@ const StockScreenerPage: React.FC = () => {
     };
   }, [activeTaskId]);
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CUSTOM_FORMULA_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as CustomFormulaTemplate[];
+      if (!Array.isArray(parsed)) return;
+      const normalized = parsed
+        .filter((item) => item && typeof item.id === 'string' && typeof item.label === 'string' && typeof item.value === 'string')
+        .slice(0, 50);
+      setCustomFormulaTemplates(normalized);
+    } catch (error) {
+      console.error('Failed to load custom formula templates:', error);
+    }
+  }, []);
+
+  const persistCustomFormulaTemplates = (next: CustomFormulaTemplate[]) => {
+    setCustomFormulaTemplates(next);
+    try {
+      window.localStorage.setItem(CUSTOM_FORMULA_STORAGE_KEY, JSON.stringify(next));
+    } catch (error) {
+      console.error('Failed to persist custom formula templates:', error);
+    }
+  };
+
+  const handleSaveCustomFormulaTemplate = () => {
+    const normalizedFormula = formulaText.trim();
+    const normalizedName = formulaName.trim();
+    if (!normalizedFormula) {
+      setFormulaValidationError(createParsedApiError({
+        title: '公式不能为空',
+        message: '请先输入自定义公式，再保存到“我的公式”。',
+        category: 'missing_params',
+      }));
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const templateId = selectedCustomTemplateId || `custom-${Date.now()}`;
+    const nextItem: CustomFormulaTemplate = {
+      id: templateId,
+      label: normalizedName || `自定义公式 ${customFormulaTemplates.length + 1}`,
+      value: normalizedFormula,
+      updatedAt: now,
+    };
+    const nextTemplates = [nextItem, ...customFormulaTemplates.filter((item) => item.id !== templateId)].slice(0, 50);
+    persistCustomFormulaTemplates(nextTemplates);
+    setSelectedCustomTemplateId(templateId);
+    setSelectedOfficialTemplate('');
+    setFormulaEditorNotice(`已保存到“我的公式”：${nextItem.label}`);
+    setFormulaValidationError(null);
+  };
+
+  const handleDeleteCustomFormulaTemplate = () => {
+    if (!selectedCustomTemplateId) return;
+    const deleting = customFormulaTemplates.find((item) => item.id === selectedCustomTemplateId);
+    const nextTemplates = customFormulaTemplates.filter((item) => item.id !== selectedCustomTemplateId);
+    persistCustomFormulaTemplates(nextTemplates);
+    setSelectedCustomTemplateId('');
+    setFormulaEditorNotice(deleting ? `已删除“我的公式”：${deleting.label}` : '已删除当前自定义公式');
+  };
+
+  const applyOfficialTemplate = (templateValue: string) => {
+    setSelectedOfficialTemplate(templateValue);
+    setSelectedCustomTemplateId('');
+    const selected = FORMULA_TEMPLATES.find((item) => item.value === templateValue);
+    if (!selected) return;
+    setFormulaText(selected.value);
+    setFormulaName(selected.label);
+    setFormulaValidation(null);
+    setFormulaValidationError(null);
+    setFormulaEditorNotice(`已套用模板：${selected.label}`);
+  };
+
+  const applyCustomTemplate = (templateId: string) => {
+    setSelectedCustomTemplateId(templateId);
+    setSelectedOfficialTemplate('');
+    const selected = customFormulaTemplates.find((item) => item.id === templateId);
+    if (!selected) return;
+    setFormulaText(selected.value);
+    setFormulaName(selected.label);
+    setFormulaValidation(null);
+    setFormulaValidationError(null);
+    setFormulaEditorNotice(`已加载“我的公式”：${selected.label}`);
+  };
+
   const handleConditionChange = (index: number, next: ScreenerCondition) => {
     setConditions((previous) => previous.map((item, currentIndex) => (currentIndex === index ? next : item)));
   };
@@ -507,6 +686,8 @@ const StockScreenerPage: React.FC = () => {
 
   const handleScan = async () => {
     const trimmedFormula = formulaText.trim();
+    const formulaModeActive = scanMode === 'formula' || scanMode === 'hybrid';
+    const conditionModeActive = scanMode === 'condition' || scanMode === 'hybrid';
     if (activeTaskId && taskInfo && (taskInfo.status === 'pending' || taskInfo.status === 'processing')) {
       setPageError(createParsedApiError({
         title: '后台任务进行中',
@@ -516,10 +697,10 @@ const StockScreenerPage: React.FC = () => {
       return;
     }
 
-    if (scanMode === 'formula' && !trimmedFormula) {
+    if (formulaModeActive && !trimmedFormula) {
       const error = createParsedApiError({
         title: '公式不能为空',
-        message: '公式模式下需要先填写公式。',
+        message: '当前模式包含公式条件，请先填写公式。',
         category: 'missing_params',
       });
       setFormulaValidation(null);
@@ -527,7 +708,7 @@ const StockScreenerPage: React.FC = () => {
       return;
     }
 
-    if (scanMode === 'formula') {
+    if (formulaModeActive) {
       const isFormulaValid = await handleValidateFormula();
       if (!isFormulaValid) {
         return;
@@ -570,9 +751,9 @@ const StockScreenerPage: React.FC = () => {
     try {
       const response = await screenerApi.scan({
         mode: scanMode,
-        conditions: scanMode === 'condition' ? conditions : undefined,
-        formula: scanMode === 'formula' ? trimmedFormula : undefined,
-        formulaName: scanMode === 'formula' ? formulaName.trim() || undefined : undefined,
+        conditions: conditionModeActive ? conditions : undefined,
+        formula: formulaModeActive ? trimmedFormula : undefined,
+        formulaName: formulaModeActive ? formulaName.trim() || undefined : undefined,
         market,
         scope: activeScope?.key,
         boardName: effectiveBoardName || undefined,
@@ -741,6 +922,19 @@ const StockScreenerPage: React.FC = () => {
     if (!formulaValidation) return null;
     return `${formulaValidation.message}，预计至少加载 ${formulaValidation.estimatedLookback} 个交易日`;
   }, [formulaValidation]);
+  const formulaComplexity = useMemo(() => {
+    if (!formulaValidation?.complexityLevel) return null;
+    const level = String(formulaValidation.complexityLevel).toLowerCase();
+    if (level === 'low') return { label: '低复杂度', variant: 'success' as const };
+    if (level === 'high') return { label: '高复杂度', variant: 'warning' as const };
+    return { label: '中复杂度', variant: 'info' as const };
+  }, [formulaValidation]);
+  const formulaFunctionUsageEntries = useMemo(() => {
+    if (!formulaValidation?.functionUsage) return [] as Array<[string, number]>;
+    return Object.entries(formulaValidation.functionUsage).sort((a, b) => b[1] - a[1]);
+  }, [formulaValidation]);
+  const isFormulaEnabled = scanMode === 'formula' || scanMode === 'hybrid';
+  const isConditionEnabled = scanMode === 'condition' || scanMode === 'hybrid';
 
   return (
     <AppPage className="space-y-6">
@@ -756,6 +950,7 @@ const StockScreenerPage: React.FC = () => {
           <div className="flex flex-wrap gap-2">
             <Badge variant="info">条件模式</Badge>
             <Badge variant="info">公式模式</Badge>
+            <Badge variant="success">组合模式</Badge>
             <Badge variant="warning">A/H/US 通用</Badge>
           </div>
         </div>
@@ -805,7 +1000,7 @@ const StockScreenerPage: React.FC = () => {
           <Select
             label="市场"
             value={market}
-            labelSuffix={<HelpHint content="扫描范围选项由后端返回；A 股可用真实板块成分股，港股和美股可用后端维护的行业代表池。" />}
+            labelSuffix={<HelpHint content={HINT_TEXT.market} />}
             onChange={(next) => {
               const nextMarket = next as MarketType;
               setMarket(nextMarket);
@@ -820,7 +1015,7 @@ const StockScreenerPage: React.FC = () => {
           />
           <Select
             label="扫描范围"
-            labelSuffix={<HelpHint content="扫描范围由后端维护；A 股支持真实行业/概念板块，港股和美股支持后端维护的行业板块代表池。" />}
+            labelSuffix={<HelpHint content={HINT_TEXT.scope} />}
             value={activeScope?.key || ''}
             onChange={(next) => {
               setScanScope(next);
@@ -830,6 +1025,7 @@ const StockScreenerPage: React.FC = () => {
           />
           <Select
             label="选股模式"
+            labelSuffix={<HelpHint content={HINT_TEXT.mode} />}
             value={scanMode}
             onChange={(next) => {
               setScanMode(next as ScreenerMode);
@@ -839,13 +1035,14 @@ const StockScreenerPage: React.FC = () => {
             options={[
               { value: 'condition', label: '条件模式' },
               { value: 'formula', label: '公式模式' },
+              { value: 'hybrid', label: '组合模式（公式 + 条件）' },
             ]}
           />
 
           <div className="flex flex-col">
             <label htmlFor="screener-codes" className="mb-2 inline-flex items-center gap-2 text-sm font-medium text-foreground">
               <span>{isCustomPool ? '自定义股票池' : '范围预览'}</span>
-              <HelpHint content={isCustomPool ? '支持逗号、空格、换行分隔股票代码。' : '这里展示后端返回的完整范围代码（板块范围可能较长）。'} />
+              <HelpHint content={HINT_TEXT.pool} />
             </label>
             <textarea
               id="screener-codes"
@@ -910,7 +1107,7 @@ const StockScreenerPage: React.FC = () => {
           <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
             <Input
               label="搜索板块"
-              labelSuffix={<HelpHint content={`输入关键字快速过滤${getMarketLabel(market)}板块目录，例如 半导体、创新药、金融。`} />}
+              labelSuffix={<HelpHint content={HINT_TEXT.boardSearch} />}
               value={boardSearchText}
               onChange={(event) => setBoardSearchText(event.target.value)}
               placeholder={activeBoardType === 'concept' ? '如 人工智能、算力租赁、创新药' : '如 半导体、金融、消费零售'}
@@ -918,7 +1115,7 @@ const StockScreenerPage: React.FC = () => {
             />
             <Select
               label={activeBoardType === 'industry' ? '具体行业板块' : '具体概念板块'}
-              labelSuffix={<HelpHint content={market === 'cn' ? '选择后会自动加载该板块的真实成分股预览；实际扫描会使用完整名单。' : '选择后会自动加载该行业池预览；实际扫描会使用完整代表池。'} />}
+              labelSuffix={<HelpHint content={HINT_TEXT.boardSelect} />}
               value={selectedBoardName}
               onChange={(next) => {
                 setSelectedBoardName(next);
@@ -936,7 +1133,7 @@ const StockScreenerPage: React.FC = () => {
         <div className="mt-5 grid gap-4 lg:grid-cols-4">
           <Input
             label="量能热度 >="
-            labelSuffix={<HelpHint content="热度 = 最新成交量 / 近 20 日均量；大于 1 表示近期成交量高于常态。" />}
+            labelSuffix={<HelpHint content={HINT_TEXT.heat} />}
             type="number"
             value={heat}
             onChange={(event) => setHeat(event.target.value)}
@@ -945,7 +1142,7 @@ const StockScreenerPage: React.FC = () => {
           />
           <Input
             label="扫描上限"
-            labelSuffix={<HelpHint content="限制参与扫描的股票数量，适合控制全市场扫描耗时；结果展示数量仍按 200 条返回。" />}
+            labelSuffix={<HelpHint content={HINT_TEXT.scanLimit} />}
             type="number"
             min={1}
             max={2000}
@@ -956,7 +1153,7 @@ const StockScreenerPage: React.FC = () => {
           />
           <Select
             label="排序字段"
-            labelSuffix={<HelpHint content="决定命中结果最终展示顺序；热度字段为空时会按 0 处理。" />}
+            labelSuffix={<HelpHint content={HINT_TEXT.sortBy} />}
             value={sortBy}
             onChange={(next) => setSortBy(next as 'lastClose' | 'heat' | 'code' | 'name')}
             options={[
@@ -968,7 +1165,7 @@ const StockScreenerPage: React.FC = () => {
           />
           <Select
             label="排序方向"
-            labelSuffix={<HelpHint content="降序更适合先看价格/热度高的标的；升序适合找低位或代码顺序。" />}
+            labelSuffix={<HelpHint content={HINT_TEXT.sortDir} />}
             value={sortDir}
             onChange={(next) => setSortDir(next as 'asc' | 'desc')}
             options={[
@@ -995,33 +1192,45 @@ const StockScreenerPage: React.FC = () => {
         </div>
       </Card>
 
-      {scanMode === 'formula' ? (
+      {isFormulaEnabled ? (
         <Card title="公式编辑器" subtitle="统一公式 DSL，可复用到 A 股、港股、美股">
           <div className="space-y-4">
-            <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+            <div className="grid gap-4 xl:grid-cols-[240px_240px_minmax(0,1fr)]">
               <Select
-                label="示例模板"
-                value=""
-                onChange={(next) => {
-                  const selected = FORMULA_TEMPLATES.find((item) => item.value === next);
-                  if (selected) {
-                    setFormulaText(selected.value);
-                    setFormulaName(selected.label);
-                    setFormulaValidation(null);
-                    setFormulaValidationError(null);
-                  }
-                }}
+                label="官方模板"
+                value={selectedOfficialTemplate}
+                onChange={applyOfficialTemplate}
+                placeholder=""
                 options={[
                   { value: '', label: '选择一个模板' },
                   ...FORMULA_TEMPLATES.map((item) => ({ value: item.value, label: item.label })),
                 ]}
               />
+              <Select
+                label="我的公式"
+                value={selectedCustomTemplateId}
+                onChange={(next) => {
+                  if (!next) {
+                    setSelectedCustomTemplateId('');
+                    return;
+                  }
+                  applyCustomTemplate(next);
+                }}
+                placeholder=""
+                options={[
+                  { value: '', label: customFormulaTemplates.length ? '选择已保存公式' : '暂无已保存公式' },
+                  ...customFormulaTemplates.map((item) => ({ value: item.id, label: item.label })),
+                ]}
+              />
               <Input
                 label="公式名称"
                 value={formulaName}
-                onChange={(event) => setFormulaName(event.target.value)}
+                onChange={(event) => {
+                  setFormulaName(event.target.value);
+                  setFormulaEditorNotice(null);
+                }}
                 placeholder="如 趋势延续 / 放量突破"
-                hint="名称会显示在结果列表中，便于区分不同公式。"
+                hint="名称会显示在结果列表中；加载“我的公式”后可直接覆盖保存。"
               />
             </div>
 
@@ -1036,6 +1245,10 @@ const StockScreenerPage: React.FC = () => {
                   setFormulaText(event.target.value);
                   setFormulaValidation(null);
                   setFormulaValidationError(null);
+                  if (selectedOfficialTemplate) {
+                    setSelectedOfficialTemplate('');
+                  }
+                  setFormulaEditorNotice(null);
                 }}
                 rows={6}
                 className="min-h-[160px] w-full rounded-xl border border-white/10 bg-card px-4 py-3 font-mono text-sm text-foreground shadow-soft-card transition-all placeholder:text-muted-text focus:border-cyan/40 focus:outline-none focus:ring-4 focus:ring-cyan/15 hover:border-white/18"
@@ -1047,8 +1260,20 @@ const StockScreenerPage: React.FC = () => {
               <Button type="button" variant="secondary" onClick={handleValidateFormula} isLoading={isValidatingFormula} loadingText="校验中...">
                 校验公式
               </Button>
+              <Button type="button" variant="outline" onClick={handleSaveCustomFormulaTemplate}>
+                保存到我的公式
+              </Button>
+              <Button type="button" variant="outline" onClick={handleDeleteCustomFormulaTemplate} disabled={!selectedCustomTemplateId}>
+                删除当前我的公式
+              </Button>
               <Badge variant="info">支持 OHLCV / MA / EMA / MACD / RSI / KDJ / BOLL / ATR / COUNT / EVERY / CROSS</Badge>
             </div>
+
+            {formulaEditorNotice ? (
+              <Card className="border border-cyan/20 bg-cyan/5">
+                <div className="text-sm text-cyan">{formulaEditorNotice}</div>
+              </Card>
+            ) : null}
 
             {formulaValidation?.valid ? (
               <Card className="border border-cyan/20 bg-cyan/5">
@@ -1059,14 +1284,41 @@ const StockScreenerPage: React.FC = () => {
                   </div>
                   <div className="font-mono text-white">{formulaValidation.normalizedFormula}</div>
                   <div className="flex flex-wrap gap-2">
+                    {formulaComplexity ? <Badge variant={formulaComplexity.variant}>{formulaComplexity.label}</Badge> : null}
+                    {typeof formulaValidation.complexityScore === 'number' ? (
+                      <Badge variant="info">复杂度评分 {formulaValidation.complexityScore}</Badge>
+                    ) : null}
+                    {typeof formulaValidation.expressionNodes === 'number' ? (
+                      <Badge variant="info">表达式节点 {formulaValidation.expressionNodes}</Badge>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
                     {formulaValidation.functions.map((item) => (
                       <Badge key={item} variant="info">{item}</Badge>
                     ))}
                   </div>
+                  {formulaFunctionUsageEntries.length ? (
+                    <div className="space-y-1">
+                      <div className="text-secondary-text">函数调用分布</div>
+                      <div className="flex flex-wrap gap-2">
+                        {formulaFunctionUsageEntries.map(([name, count]) => (
+                          <Badge key={name} variant="warning">{name} x{count}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {formulaValidation.warnings.length ? (
                     <div className="space-y-1 text-secondary-text">
                       {formulaValidation.warnings.map((warning) => (
                         <div key={warning}>- {warning}</div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {formulaValidation.suggestions?.length ? (
+                    <div className="space-y-1 text-secondary-text">
+                      <div className="text-white">优化建议</div>
+                      {formulaValidation.suggestions.map((suggestion) => (
+                        <div key={suggestion}>- {suggestion}</div>
                       ))}
                     </div>
                   ) : null}
@@ -1119,76 +1371,49 @@ const StockScreenerPage: React.FC = () => {
         </Card>
       ) : null}
 
-      {scanMode === 'condition' ? (
-        <>
-          <StickyActionBar className="top-20 bottom-auto">
-            <div className="mr-auto flex flex-col gap-1 px-1">
-              <span className="text-sm font-medium text-white">按当前范围开始选股</span>
-              <span className="text-xs text-secondary-text">
-                当前 {conditions.length} 个条件，范围为 {activeScope?.label}{scanLimit ? `，扫描上限 ${scanLimit} 只` : ''}
-              </span>
-            </div>
-            <Button type="button" variant="secondary" onClick={handleAddCondition}>
-              添加条件
-            </Button>
-            <Button type="button" onClick={handleScan} isLoading={isLoading} loadingText="扫描中..." glow>
-              开始选股
-            </Button>
-            <Button type="button" variant="outline" onClick={handleDownloadCsv} disabled={!results?.csv}>
-              下载 CSV
-            </Button>
-          </StickyActionBar>
+      {isConditionEnabled ? (
+        <div className="space-y-4">
+          {conditions.map((condition, index) => (
+            <ConditionRow
+              key={`${condition.indicator}-${index}`}
+              metaList={indicators}
+              value={condition}
+              onChange={(next) => handleConditionChange(index, next)}
+              onRemove={() => handleRemoveCondition(index)}
+              isFirst={index === 0}
+            />
+          ))}
+        </div>
+      ) : null}
 
-          <div className="space-y-4">
-            {conditions.map((condition, index) => (
-              <ConditionRow
-                key={`${condition.indicator}-${index}`}
-                metaList={indicators}
-                value={condition}
-                onChange={(next) => handleConditionChange(index, next)}
-                onRemove={() => handleRemoveCondition(index)}
-                isFirst={index === 0}
-              />
-            ))}
-          </div>
-        </>
-      ) : (
-        <StickyActionBar className="top-20 bottom-auto">
-          <div className="mr-auto flex flex-col gap-1 px-1">
-            <span className="text-sm font-medium text-white">默认公式选股，开始前会自动校验公式</span>
-            <span className="text-xs text-secondary-text">
-              当前为公式模式，范围为 {activeScope?.label}{scanLimit ? `，扫描上限 ${scanLimit} 只` : ''}。
-            </span>
-          </div>
-          <Button type="button" variant="secondary" onClick={handleValidateFormula} isLoading={isValidatingFormula} loadingText="校验中...">
-            校验公式
-          </Button>
-          <Button type="button" onClick={handleScan} isLoading={isLoading} loadingText="扫描中..." glow>
-            开始选股
-          </Button>
-          <Button type="button" variant="outline" onClick={handleDownloadCsv} disabled={!results?.csv}>
-            下载 CSV
-          </Button>
-        </StickyActionBar>
-      )}
-
-      <div className="flex flex-wrap gap-3">
-        {scanMode === 'condition' ? (
+      <StickyActionBar>
+        <div className="mr-auto flex flex-col gap-1 px-1">
+          <span className="text-sm font-medium text-white">按当前范围开始选股</span>
+          <span className="text-xs text-secondary-text">
+            {scanMode === 'hybrid'
+              ? `当前为组合模式（公式 + ${conditions.length} 条条件），范围为 ${activeScope?.label}${scanLimit ? `，扫描上限 ${scanLimit} 只` : ''}。`
+              : scanMode === 'formula'
+                ? `当前为公式模式，范围为 ${activeScope?.label}${scanLimit ? `，扫描上限 ${scanLimit} 只` : ''}。`
+                : `当前 ${conditions.length} 个条件，范围为 ${activeScope?.label}${scanLimit ? `，扫描上限 ${scanLimit} 只` : ''}。`}
+          </span>
+        </div>
+        {isConditionEnabled ? (
           <Button type="button" variant="secondary" onClick={handleAddCondition}>
             添加条件
           </Button>
-        ) : (
+        ) : null}
+        {isFormulaEnabled ? (
           <Button type="button" variant="secondary" onClick={handleValidateFormula} isLoading={isValidatingFormula} loadingText="校验中...">
             校验公式
           </Button>
-        )}
-        <Button type="button" onClick={handleScan} isLoading={isLoading} loadingText="扫描中...">
+        ) : null}
+        <Button type="button" onClick={handleScan} isLoading={isLoading} loadingText="扫描中..." glow>
           开始选股
         </Button>
         <Button type="button" variant="outline" onClick={handleDownloadCsv} disabled={!results?.csv}>
           下载 CSV
         </Button>
-      </div>
+      </StickyActionBar>
 
       <Card title="结果列表" subtitle="Screening Results">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-sm text-secondary-text">
@@ -1200,8 +1425,8 @@ const StockScreenerPage: React.FC = () => {
                 : '尚未开始扫描'}
           </span>
           <div className="flex flex-wrap gap-2">
-            <Badge variant={scanMode === 'formula' ? 'info' : 'warning'}>
-              {scanMode === 'formula' ? '当前为公式模式' : '当前为条件模式'}
+            <Badge variant={scanMode === 'hybrid' ? 'success' : scanMode === 'formula' ? 'info' : 'warning'}>
+              {scanMode === 'hybrid' ? '当前为组合模式' : scanMode === 'formula' ? '当前为公式模式' : '当前为条件模式'}
             </Badge>
             <Badge variant={isCustomPool ? 'warning' : 'info'}>
               {isCustomPool ? '当前为自定义股票池扫描' : `当前范围：${activeScope?.label}`}

@@ -83,9 +83,14 @@ const formulaValidation: FormulaValidationResponse = {
   normalizedFormula: 'CROSS(MA(CLOSE, 5), MA(CLOSE, 20))',
   referencedFields: ['CLOSE'],
   functions: ['CROSS', 'MA'],
+  functionUsage: { CROSS: 1, MA: 2 },
+  expressionNodes: 18,
+  complexityScore: 56,
+  complexityLevel: 'medium',
   message: '公式校验通过',
   estimatedLookback: 250,
   warnings: [],
+  suggestions: ['建议加入成交量条件，减少噪音信号。'],
 };
 
 const scanResponse: ScreenerScanResponse = {
@@ -136,6 +141,7 @@ const boardPreview: ScreenerBoardPreview = {
 
 describe('StockScreenerPage', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     MockEventSource.instances = [];
     mockedScreenerApi.getScopes.mockReset();
     mockedScreenerApi.getBoards.mockReset();
@@ -185,12 +191,13 @@ describe('StockScreenerPage', () => {
     render(<StockScreenerPage />);
 
     expect((await screen.findAllByRole('button', { name: '开始选股' })).length).toBeGreaterThan(0);
-    expect(screen.getByText('默认公式选股，开始前会自动校验公式')).toBeTruthy();
+    expect(screen.getByText(/当前为组合模式（公式 \+ 1 条条件）/)).toBeTruthy();
     expect(screen.getByText('技术指标选股')).toBeTruthy();
     expect(screen.getByText('公式编辑器')).toBeTruthy();
     expect(getConfigSelect(1)).toBeTruthy();
-    const templateSelect = await screen.findByLabelText('示例模板');
+    const templateSelect = await screen.findByLabelText('官方模板');
     expect((templateSelect as HTMLSelectElement).options.length).toBeGreaterThanOrEqual(21);
+    expect(await screen.findByLabelText('我的公式')).toBeTruthy();
   });
 
   it('shows a validation alert when custom pool is empty and scan is clicked', async () => {
@@ -291,7 +298,7 @@ describe('StockScreenerPage', () => {
   it('passes preset cn board metadata in scan request', async () => {
     render(<StockScreenerPage />);
 
-    fireEvent.change(await screen.findByLabelText('选股模式'), { target: { value: 'condition' } });
+    fireEvent.change(getConfigSelect(2), { target: { value: 'condition' } });
     await screen.findByRole('option', { name: 'A 股半导体' });
     fireEvent.change(getConfigSelect(1), { target: { value: 'cn_semiconductor' } });
     fireEvent.click(screen.getAllByRole('button', { name: '开始选股' })[0]);
@@ -397,9 +404,11 @@ describe('StockScreenerPage', () => {
   it('submits a custom cn condition scan and renders returned results', async () => {
     render(<StockScreenerPage />);
 
-    fireEvent.change(await screen.findByLabelText('选股模式'), { target: { value: 'condition' } });
-    fireEvent.change(getConfigSelect(1), { target: { value: 'custom_pool' } });
-    fireEvent.change(await screen.findByRole('textbox', { name: /自定义股票池/ }), { target: { value: '600519' } });
+    fireEvent.change(getConfigSelect(2), { target: { value: 'condition' } });
+    const scopeLabel = await screen.findByText('扫描范围');
+    const scopeSelect = scopeLabel.closest('label')?.parentElement?.querySelector('select');
+    fireEvent.change(scopeSelect as HTMLSelectElement, { target: { value: 'custom_pool' } });
+    fireEvent.change(await screen.findByRole('textbox'), { target: { value: '600519' } });
     fireEvent.click(screen.getAllByRole('button', { name: '开始选股' })[0]);
 
     await waitFor(() => {
@@ -443,8 +452,9 @@ describe('StockScreenerPage', () => {
 
     fireEvent.change(getConfigSelect(0), { target: { value: 'us' } });
     fireEvent.change(getConfigSelect(1), { target: { value: 'custom_pool' } });
+    fireEvent.change(getConfigSelect(2), { target: { value: 'formula' } });
     fireEvent.change(await screen.findByLabelText('公式名称'), { target: { value: '趋势延续' } });
-    fireEvent.change(await screen.findByRole('textbox', { name: /自定义股票池/ }), { target: { value: 'AAPL' } });
+    fireEvent.change(await screen.findByRole('textbox', { name: /自定义股票池|范围预览/ }), { target: { value: 'AAPL' } });
     fireEvent.change(await screen.findByLabelText('选股公式'), { target: { value: 'CLOSE > MA(CLOSE, 5)' } });
 
     fireEvent.click(screen.getAllByRole('button', { name: '校验公式' })[0]);
@@ -488,7 +498,62 @@ describe('StockScreenerPage', () => {
     );
 
     expect(await screen.findByText('校验通过')).toBeTruthy();
+    expect(await screen.findByText('复杂度评分 56')).toBeTruthy();
+    expect(await screen.findByText('函数调用分布')).toBeTruthy();
+    expect(await screen.findByText('优化建议')).toBeTruthy();
     expect((await screen.findAllByText('趋势延续')).length).toBeGreaterThan(0);
+  });
+
+  it('supports saving and loading custom formula templates', async () => {
+    render(<StockScreenerPage />);
+
+    fireEvent.change(await screen.findByLabelText('公式名称'), { target: { value: '我的突破策略' } });
+    fireEvent.change(await screen.findByLabelText('选股公式'), { target: { value: 'CLOSE > MA(CLOSE, 10)' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存到我的公式' }));
+
+    expect(await screen.findByText('已保存到“我的公式”：我的突破策略')).toBeTruthy();
+
+    const customSelect = await screen.findByLabelText('我的公式');
+    const options = Array.from((customSelect as HTMLSelectElement).options).map((option) => option.text);
+    expect(options).toContain('我的突破策略');
+
+    fireEvent.change(customSelect, {
+      target: {
+        value: (customSelect as HTMLSelectElement).options[(customSelect as HTMLSelectElement).options.length - 1].value,
+      },
+    });
+
+    expect((await screen.findByLabelText('公式名称') as HTMLInputElement).value).toBe('我的突破策略');
+    expect((await screen.findByLabelText('选股公式') as HTMLTextAreaElement).value).toBe('CLOSE > MA(CLOSE, 10)');
+  });
+
+  it('supports hybrid mode and submits both formula and conditions', async () => {
+    render(<StockScreenerPage />);
+
+    fireEvent.change(getConfigSelect(0), { target: { value: 'us' } });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'custom_pool' } });
+    fireEvent.change(getConfigSelect(2), { target: { value: 'hybrid' } });
+    fireEvent.change(await screen.findByRole('textbox', { name: /自定义股票池|范围预览/ }), { target: { value: 'AAPL' } });
+    fireEvent.change(await screen.findByLabelText('选股公式'), { target: { value: 'CLOSE > MA(CLOSE, 5)' } });
+
+    fireEvent.click(screen.getAllByRole('button', { name: '开始选股' })[0]);
+
+    await waitFor(() => {
+      expect(mockedScreenerApi.validateFormula).toHaveBeenCalledWith('CLOSE > MA(CLOSE, 5)');
+    });
+    await waitFor(() => {
+      expect(mockedScreenerApi.scan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: 'hybrid',
+          formula: 'CLOSE > MA(CLOSE, 5)',
+          conditions: expect.any(Array),
+          market: 'us',
+          scope: 'custom_pool',
+          codes: ['AAPL'],
+          asyncMode: false,
+        }),
+      );
+    });
   });
 
   it('runs full-market cn scan in async mode and refreshes results on completion', async () => {

@@ -48,6 +48,15 @@ class _FakeManager:
     def get_belong_boards(self, code: str):
         return [{"name": "白酒"}]
 
+    def get_realtime_quote(self, code: str):
+        return types.SimpleNamespace(pe_ratio=18.0, pb_ratio=2.1)
+
+    def get_fundamental_context(self, code: str, budget_seconds: float | None = None):
+        return {
+            "valuation": {"data": {"pe_ratio": 18.0, "pb_ratio": 2.1}},
+            "growth": {"data": {"roe": 15.2, "revenue_yoy": 22.5, "net_profit_yoy": 30.0}},
+        }
+
 
 class _HintAwareManager(_FakeManager):
     def __init__(self) -> None:
@@ -626,6 +635,30 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         self.assertEqual(result.total, 1)
         self.assertEqual(result.results[0].code, "AAPL")
 
+    def test_scan_hybrid_mode_requires_formula_and_conditions_together(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        result = service.scan(
+            ScreenerScanRequest(
+                mode="hybrid",
+                formula="CLOSE > MA(CLOSE, 5)",
+                market="cn",
+                codes=["600519"],
+                conditions=[
+                    IndicatorCondition(
+                        indicator=IndicatorKey.PE,
+                        operator=Operator.GT,
+                        compare_to=CompareTo(type=CompareType.VALUE, value=10),
+                    ),
+                ],
+                export_csv=False,
+            )
+        )
+
+        self.assertEqual(result.total, 1)
+        self.assertIn("CLOSE > MA(CLOSE, 5)", result.results[0].matched_conditions)
+        self.assertTrue(any("PE >" in item for item in result.results[0].matched_conditions))
+
     def test_scan_reuses_history_source_hint(self) -> None:
         manager = _HintAwareManager()
         service = StockScreenerService(manager=manager)
@@ -675,6 +708,98 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         self.assertEqual(service._resolve_scan_workers(0), 1)   # pylint: disable=protected-access
         self.assertEqual(service._resolve_scan_workers(3), 3)   # pylint: disable=protected-access
         self.assertEqual(service._resolve_scan_workers(100), 16)  # pylint: disable=protected-access
+
+    def test_indicator_catalog_contains_scalar_fundamental_indicators(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        keys = {item.key for item in service.indicator_catalog()}
+
+        self.assertIn(IndicatorKey.HEAT, keys)
+        self.assertIn(IndicatorKey.PE, keys)
+        self.assertIn(IndicatorKey.PB, keys)
+        self.assertIn(IndicatorKey.PEG, keys)
+        self.assertIn(IndicatorKey.ROE, keys)
+        self.assertIn(IndicatorKey.REVENUE_YOY, keys)
+        self.assertIn(IndicatorKey.NET_PROFIT_YOY, keys)
+
+    def test_scan_supports_pe_pb_scalar_conditions(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        result = service.scan(
+            ScreenerScanRequest(
+                market="cn",
+                codes=["600519"],
+                conditions=[
+                    IndicatorCondition(
+                        indicator=IndicatorKey.PE,
+                        operator=Operator.GT,
+                        compare_to=CompareTo(type=CompareType.VALUE, value=10),
+                    ),
+                    IndicatorCondition(
+                        indicator=IndicatorKey.PB,
+                        operator=Operator.LT,
+                        compare_to=CompareTo(type=CompareType.VALUE, value=3),
+                        logic_with_previous="AND",
+                    ),
+                ],
+            )
+        )
+
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.results[0].code, "600519")
+
+    def test_scan_supports_growth_and_peg_conditions(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        result = service.scan(
+            ScreenerScanRequest(
+                market="cn",
+                codes=["600519"],
+                conditions=[
+                    IndicatorCondition(
+                        indicator=IndicatorKey.ROE,
+                        operator=Operator.GT,
+                        compare_to=CompareTo(type=CompareType.VALUE, value=10),
+                    ),
+                    IndicatorCondition(
+                        indicator=IndicatorKey.NET_PROFIT_YOY,
+                        operator=Operator.GT,
+                        compare_to=CompareTo(type=CompareType.VALUE, value=20),
+                        logic_with_previous="AND",
+                    ),
+                    IndicatorCondition(
+                        indicator=IndicatorKey.PEG,
+                        operator=Operator.LT,
+                        compare_to=CompareTo(type=CompareType.VALUE, value=1),
+                        logic_with_previous="AND",
+                    ),
+                ],
+            )
+        )
+
+        self.assertEqual(result.total, 1)
+
+    def test_scan_skips_when_growth_data_missing(self) -> None:
+        class _MissingGrowthManager(_FakeManager):
+            def get_fundamental_context(self, code: str, budget_seconds: float | None = None):
+                return {"valuation": {"data": {"pe_ratio": 12.0, "pb_ratio": 1.8}}, "growth": {"data": {}}}
+
+        service = StockScreenerService(manager=_MissingGrowthManager())
+        result = service.scan(
+            ScreenerScanRequest(
+                market="cn",
+                codes=["600519"],
+                conditions=[
+                    IndicatorCondition(
+                        indicator=IndicatorKey.ROE,
+                        operator=Operator.GT,
+                        compare_to=CompareTo(type=CompareType.VALUE, value=10),
+                    )
+                ],
+            )
+        )
+
+        self.assertEqual(result.total, 0)
 
 
 if __name__ == "__main__":
