@@ -9,7 +9,9 @@ import csv
 import io
 import logging
 import os
+import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -282,6 +284,13 @@ def _parse_optional_int(value: Any) -> Optional[int]:
 
 
 def _fallback_cn_board_catalog(board_type: str) -> List[Dict[str, Any]]:
+    try:
+        sohu_rows = _fetch_cn_board_catalog_from_sohu(board_type)
+        if sohu_rows:
+            return sohu_rows
+    except Exception as exc:
+        logger.warning("Failed to load CN %s board catalog from Sohu fallback: %s", board_type, exc)
+
     boards: List[Dict[str, Any]] = []
     seen: set[str] = set()
     for scope in STOCK_SCREENER_SCOPE_CONFIG.get("cn", []):
@@ -346,6 +355,72 @@ def _build_board_tiers(board: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return tiers
 
 
+def _boost_overseas_board_codes(
+    market: MarketType,
+    board_name: str,
+    seed_codes: List[str],
+    minimum_size: int = 48,
+) -> List[str]:
+    if market not in (MarketType.HK, MarketType.US):
+        return [str(code).strip() for code in seed_codes if str(code).strip()]
+
+    merged_codes: List[str] = []
+    seen: set[str] = set()
+    for code in seed_codes:
+        normalized = str(code or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        merged_codes.append(normalized)
+    if len(merged_codes) >= minimum_size:
+        return merged_codes
+
+    preset_scopes = [
+        scope
+        for scope in STOCK_SCREENER_SCOPE_CONFIG.get(_scope_market_key(market), [])
+        if str(scope.get("kind") or "") == "preset_pool"
+    ]
+    if not preset_scopes:
+        return merged_codes
+
+    board_text = str(board_name or "")
+    board_text_lower = board_text.lower()
+    is_tech_board = any(token in board_text for token in ("科技", "互联网", "通信", "软件", "算力", "AI", "半导体"))
+    is_fin_board = any(token in board_text for token in ("金融", "银行", "保险", "券商", "信托"))
+    is_consumer_board = any(
+        token in board_text
+        for token in ("消费", "零售", "旅游", "博彩", "汽车", "出行", "地产", "物流", "医药", "医疗", "能源", "公用", "材料", "化工", "军工", "reit")
+    )
+
+    def scope_score(scope: Dict[str, Any]) -> Tuple[int, int]:
+        scope_key = str(scope.get("key") or "").lower()
+        scope_label = str(scope.get("label") or "").lower()
+        scope_desc = str(scope.get("description") or "").lower()
+        pool_codes = [str(code).strip() for code in list(scope.get("codes") or []) if str(code).strip()]
+        overlap = len(set(pool_codes).intersection(seen))
+        keyword_score = 0
+        if is_tech_board and any(token in scope_key for token in ("tech", "big_tech", "semiconductor")):
+            keyword_score += 80
+        if is_fin_board and "finance" in scope_key:
+            keyword_score += 80
+        if is_consumer_board and "consumer" in scope_key:
+            keyword_score += 80
+        if board_text_lower and (board_text_lower in scope_label or board_text_lower in scope_desc):
+            keyword_score += 20
+        return keyword_score + overlap * 10, len(pool_codes)
+
+    for scope in sorted(preset_scopes, key=scope_score, reverse=True):
+        for code in list(scope.get("codes") or []):
+            normalized = str(code or "").strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            merged_codes.append(normalized)
+            if len(merged_codes) >= minimum_size:
+                return merged_codes
+    return merged_codes
+
+
 def _merge_stock_basics(*groups: Iterable[StockBasic]) -> List[StockBasic]:
     basics: List[StockBasic] = []
     seen: set[str] = set()
@@ -379,6 +454,145 @@ def _normalize_tushare_code(raw_code: str) -> str:
 def _recent_trade_dates(days: int = 10) -> List[str]:
     base = datetime.now()
     return [(base - timedelta(days=offset)).strftime("%Y%m%d") for offset in range(days)]
+
+
+def _decode_cn_html(content: bytes) -> str:
+    for encoding in ("utf-8", "gb18030", "gbk", "gb2312"):
+        try:
+            return content.decode(encoding)
+        except Exception:
+            continue
+    return content.decode("utf-8", errors="ignore")
+
+
+def _normalize_cn_board_name(value: str) -> str:
+    text = str(value or "").strip()
+    for suffix in ("概念", "行业", "板块"):
+        if text.endswith(suffix) and len(text) > len(suffix):
+            text = text[: -len(suffix)]
+            break
+    return re.sub(r"\s+", "", text)
+
+
+@lru_cache(maxsize=1)
+def _fetch_sohu_cn_board_index() -> Dict[str, str]:
+    _ensure_screener_runtime_deps(require_requests=True)
+    assert requests is not None
+
+    response = requests.get(
+        "https://q.stock.sohu.com/cn/bk.shtml",
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    text = _decode_cn_html(response.content)
+
+    index: Dict[str, str] = {}
+    pattern = re.compile(r'href="bk_(\d+)\.shtml"[^>]*>([^<]+)</a>', re.IGNORECASE)
+    for board_id, raw_name in pattern.findall(text):
+        board_name = re.sub(r"\s+", "", str(raw_name or "").strip())
+        if not board_name:
+            continue
+        index.setdefault(board_name, board_id)
+    return index
+
+
+def _resolve_sohu_board_id(board_name: str, index: Dict[str, str]) -> Optional[str]:
+    raw_name = str(board_name or "").strip()
+    if not raw_name:
+        return None
+
+    normalized = _normalize_cn_board_name(raw_name)
+    candidates: List[str] = []
+    for name in (raw_name, normalized):
+        cleaned = re.sub(r"\s+", "", name)
+        if cleaned:
+            candidates.append(cleaned)
+    if normalized:
+        for suffix in ("概念", "行业", "板块"):
+            candidates.append(f"{normalized}{suffix}")
+
+    seen_candidates: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen_candidates:
+            continue
+        seen_candidates.add(candidate)
+        board_id = index.get(candidate)
+        if board_id:
+            return board_id
+
+    normalized_map: Dict[str, str] = {}
+    for name, board_id in index.items():
+        normalized_map.setdefault(_normalize_cn_board_name(name), board_id)
+    board_id = normalized_map.get(normalized)
+    if board_id:
+        return board_id
+
+    for name, board_id in index.items():
+        if normalized and normalized in _normalize_cn_board_name(name):
+            return board_id
+    return None
+
+
+@lru_cache(maxsize=512)
+def _fetch_sohu_cn_board_constituents(board_id: str) -> List[Tuple[str, str]]:
+    _ensure_screener_runtime_deps(require_requests=True)
+    assert requests is not None
+
+    response = requests.get(
+        f"https://q.stock.sohu.com/cn/bk_{board_id}.html",
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    text = _decode_cn_html(response.content)
+
+    pattern = re.compile(
+        r'<td[^>]*class="e1"[^>]*>\s*(\d{6})\s*</td>\s*<td[^>]*class="e2"[^>]*>\s*<a[^>]*>([^<]+)</a>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    rows: List[Tuple[str, str]] = []
+    seen: set[str] = set()
+    for code, name in pattern.findall(text):
+        normalized_code = str(code or "").strip()
+        if len(normalized_code) != 6 or not normalized_code.isdigit() or normalized_code in seen:
+            continue
+        seen.add(normalized_code)
+        rows.append((normalized_code, str(name or "").strip() or normalized_code))
+    return rows
+
+
+@lru_cache(maxsize=4)
+def _fetch_cn_board_catalog_from_sohu(board_type: str) -> List[Dict[str, Any]]:
+    index = _fetch_sohu_cn_board_index()
+    rows: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    normalized_type = str(board_type or "").strip()
+
+    for board_name, board_id in index.items():
+        is_concept = "概念" in board_name
+        is_region_or_theme = "板块" in board_name
+        is_industry = (not is_concept) and (not is_region_or_theme)
+        if normalized_type == ScreenerBoardType.CONCEPT.value and not is_concept:
+            continue
+        if normalized_type == ScreenerBoardType.INDUSTRY.value and not is_industry:
+            continue
+
+        normalized_name = _normalize_cn_board_name(board_name)
+        if not normalized_name or normalized_name in seen:
+            continue
+        seen.add(normalized_name)
+        rows.append(
+            {
+                "board_name": normalized_name,
+                "label": normalized_name,
+                "board_code": f"sohu_{board_id}",
+                "estimated_count": None,
+                "description": f"由搜狐板块页补充：{board_name}",
+                "source": "sohu",
+            }
+        )
+    return rows
 
 
 @lru_cache(maxsize=128)
@@ -473,8 +687,12 @@ class StockScreenerService:
     def __init__(self, manager=None):
         self._manager = manager
         config = get_config()
-        configured_workers = int(getattr(config, "max_workers", 3) or 3)
-        self._max_workers = max(1, min(configured_workers, 8))
+        configured_scan_workers = int(getattr(config, "stock_screener_max_workers", 16) or 16)
+        self._max_workers = max(1, min(configured_scan_workers, 32))
+        configured_io_workers = int(getattr(config, "max_workers", 3) or 3)
+        self._io_workers = max(1, min(configured_io_workers, 8))
+        configured_progress_step = int(getattr(config, "stock_screener_progress_update_step", 5) or 5)
+        self._progress_update_step = max(1, min(configured_progress_step, 500))
         self._formula_engine = StockFormulaEngine()
 
     def _get_manager(self):
@@ -686,6 +904,8 @@ class StockScreenerService:
         fetchers: List[Tuple[str, Callable[[], Any]]] = []
         if market == MarketType.HK:
             fetchers = [("akshare_hk_spot_em", ak.stock_hk_spot_em)]
+            if hasattr(ak, "stock_hk_spot"):
+                fetchers.append(("akshare_hk_spot", ak.stock_hk_spot))
         elif market == MarketType.US:
             if hasattr(ak, "stock_us_spot_em"):
                 fetchers.append(("akshare_us_spot_em", ak.stock_us_spot_em))
@@ -723,6 +943,70 @@ class StockScreenerService:
                 return basics, source
         if last_error is not None:
             raise RuntimeError(f"failed to load {market.value.upper()} market symbols: {last_error}") from last_error
+        return [], "empty"
+
+    def _fetch_overseas_famous_symbols(
+        self,
+        market: MarketType,
+        limit: Optional[int] = None,
+    ) -> Tuple[List[StockBasic], str]:
+        try:
+            import akshare as ak  # type: ignore
+        except Exception as exc:  # pragma: no cover - dependency guard
+            raise RuntimeError(f"akshare unavailable: {exc}") from exc
+
+        rows: List[StockBasic] = []
+        source_parts: List[str] = []
+        last_error: Optional[Exception] = None
+
+        if market == MarketType.HK:
+            fetch_specs: List[Tuple[str, Callable[[], Any]]] = [
+                ("akshare_hk_famous_spot_em", ak.stock_hk_famous_spot_em),
+            ]
+        elif market == MarketType.US:
+            us_symbols = ("科技类", "金融类", "医药食品类", "媒体类", "汽车能源类", "制造零售类")
+            fetch_specs = [
+                (
+                    f"akshare_us_famous_spot_em:{symbol}",
+                    (lambda current=symbol: ak.stock_us_famous_spot_em(symbol=current)),
+                )
+                for symbol in us_symbols
+            ]
+        else:
+            raise ValueError(f"unsupported overseas market: {market.value}")
+
+        seen: set[str] = set()
+        for source, fetcher in fetch_specs:
+            try:
+                df = fetcher()
+            except Exception as exc:
+                last_error = exc
+                logger.warning("Failed to load %s famous pool from %s: %s", market.value.upper(), source, exc)
+                continue
+            if df is None or df.empty:
+                continue
+            code_col = self._market_list_column(df, market, "code")
+            name_col = self._market_list_column(df, market, "name")
+            if code_col is None:
+                continue
+            source_parts.append(source.split(":", 1)[0])
+            for _, row in df.iterrows():
+                normalized = self._normalize_code_for_market(row.get(code_col, ""), market)
+                if normalized is None or normalized in seen:
+                    continue
+                seen.add(normalized)
+                raw_name = str(row.get(name_col, "")).strip() if name_col else ""
+                rows.append(StockBasic(code=normalized, name=raw_name or normalized))
+                if limit is not None and len(rows) >= limit:
+                    break
+            if limit is not None and len(rows) >= limit:
+                break
+
+        if rows:
+            unique_sources = list(dict.fromkeys(source_parts))
+            return rows, "+".join(unique_sources) if unique_sources else "akshare_famous"
+        if last_error is not None:
+            raise RuntimeError(f"failed to load {market.value.upper()} famous symbols: {last_error}") from last_error
         return [], "empty"
 
     def _yfinance_symbol_for_market(self, code: str, market: MarketType) -> str:
@@ -780,13 +1064,30 @@ class StockScreenerService:
         if not boards:
             return {}, "config"
 
-        market_basics, market_source = self._fetch_overseas_market_symbols(market, limit=profile_limit)
-        if not market_basics:
-            return {}, market_source
+        source_parts: List[str] = []
+        market_basics: List[StockBasic] = []
+        try:
+            market_basics, market_source = self._fetch_overseas_market_symbols(market, limit=profile_limit)
+            if market_basics:
+                source_parts.append(market_source)
+        except Exception as exc:
+            logger.warning("Failed to load %s market symbols from primary source: %s", market.value.upper(), exc)
+
+        famous_basics: List[StockBasic] = []
+        try:
+            famous_basics, famous_source = self._fetch_overseas_famous_symbols(market, limit=profile_limit)
+            if famous_basics:
+                source_parts.append(famous_source)
+        except Exception as exc:
+            logger.warning("Failed to load %s market symbols from famous pool source: %s", market.value.upper(), exc)
+
+        merged_market_basics = _merge_stock_basics(market_basics, famous_basics)
+        if not merged_market_basics:
+            return {}, "+".join(source_parts) if source_parts else "empty"
 
         cached_profiles: Dict[str, Dict[str, Any]] = {}
         missing_basics: List[StockBasic] = []
-        for basic in market_basics:
+        for basic in merged_market_basics:
             cached_profile = self._load_cached_profile_entry(target_cache, market, basic.code)
             if cached_profile is None:
                 missing_basics.append(basic)
@@ -794,7 +1095,7 @@ class StockScreenerService:
                 cached_profiles[basic.code] = cached_profile
 
         if missing_basics:
-            with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
+            with ThreadPoolExecutor(max_workers=self._io_workers) as executor:
                 future_map = {executor.submit(self._fetch_yfinance_profile, market, basic): basic for basic in missing_basics}
                 for future in as_completed(future_map):
                     basic = future_map[future]
@@ -816,7 +1117,7 @@ class StockScreenerService:
             rule = self._get_overseas_board_rule(market, board_type, board_name)
             live_basics: List[StockBasic] = []
             if rule:
-                for basic in market_basics:
+                for basic in merged_market_basics:
                     profile = cached_profiles.get(basic.code)
                     if not profile or not self._profile_matches_board(profile, rule):
                         continue
@@ -835,7 +1136,8 @@ class StockScreenerService:
                 seen_seed_codes.add(normalized)
                 seed_basics.append(StockBasic(code=normalized, name=normalized))
             merged_basics = _merge_stock_basics(live_basics, seed_basics)
-            source = f"{market_source}+yfinance" if live_basics else "config"
+            source_chain = "+".join(part for part in source_parts if part)
+            source = f"{source_chain}+yfinance" if live_basics and source_chain else ("config" if not live_basics else "yfinance")
             snapshots[board_name] = {
                 "board_name": board_name,
                 "label": str(board.get("label") or board_name),
@@ -850,7 +1152,7 @@ class StockScreenerService:
 
         if cache is None:
             self._save_board_cache(target_cache)
-        return snapshots, market_source
+        return snapshots, "+".join(part for part in source_parts if part) or "empty"
 
     def indicator_catalog(self) -> List[IndicatorMeta]:
         return [
@@ -947,11 +1249,139 @@ class StockScreenerService:
             ),
         ]
 
+    def _build_cn_auto_board_scopes(self, limit_per_type: int = 10) -> List[Dict[str, Any]]:
+        cache = self._load_board_cache()
+        configured: set[Tuple[str, str]] = set()
+        for scope in STOCK_SCREENER_SCOPE_CONFIG.get("cn", []):
+            if str(scope.get("kind") or "") != "board":
+                continue
+            board_type = str(scope.get("board_type") or "").strip()
+            board_name = str(scope.get("board_name") or "").strip()
+            if board_type and board_name:
+                configured.add((board_type, board_name))
+
+        expanded: List[Dict[str, Any]] = []
+        for board_type in (ScreenerBoardType.INDUSTRY.value, ScreenerBoardType.CONCEPT.value):
+            rows = get_catalog_entries(cache, MarketType.CN.value, board_type)
+            ranked: List[Tuple[int, str, Dict[str, Any], Optional[Dict[str, Any]]]] = []
+            for row in rows:
+                board_name = str(row.get("board_name") or "").strip()
+                if not board_name or (board_type, board_name) in configured:
+                    continue
+                entry = get_constituent_entry(cache, MarketType.CN.value, board_type, board_name)
+                item_count = len(list((entry or {}).get("items") or []))
+                if item_count <= 0:
+                    continue
+                ranked.append((item_count, board_name, row, entry))
+            ranked.sort(key=lambda item: (-item[0], item[1]))
+            for index, (count, board_name, row, entry) in enumerate(ranked[: max(0, int(limit_per_type))], start=1):
+                item_rows = list((entry or {}).get("items") or [])
+                fallback_codes = [
+                    str((item or {}).get("code") or "").strip()
+                    for item in item_rows[:20]
+                    if str((item or {}).get("code") or "").strip()
+                ]
+                prefix = "行业" if board_type == ScreenerBoardType.INDUSTRY.value else "概念"
+                expanded.append(
+                    {
+                        "key": f"cn_auto_{board_type}_{index}",
+                        "label": f"A 股{prefix}·{board_name}",
+                        "description": str(row.get("description") or f"来自缓存自动扩展的 A 股{prefix}板块。"),
+                        "kind": "board",
+                        "board_type": board_type,
+                        "board_name": board_name,
+                        "fallback_codes": fallback_codes,
+                    }
+                )
+        return expanded
+
+    def _build_overseas_auto_scopes(self, market: MarketType, minimum_total: int = 20) -> List[Dict[str, Any]]:
+        market_key = _scope_market_key(market)
+        boards = list(STOCK_SCREENER_DYNAMIC_BOARD_CONFIG.get(market_key, {}).get(ScreenerBoardType.INDUSTRY.value, []))
+        if not boards:
+            return []
+
+        configured_keys = {
+            str(scope.get("key") or "").strip()
+            for scope in STOCK_SCREENER_SCOPE_CONFIG.get(market_key, [])
+            if str(scope.get("key") or "").strip()
+        }
+        configured_board_names = {
+            str(scope.get("board_name") or "").strip()
+            for scope in STOCK_SCREENER_SCOPE_CONFIG.get(market_key, [])
+            if str(scope.get("kind") or "") == "board" and str(scope.get("board_name") or "").strip()
+        }
+        market_label = "港股" if market == MarketType.HK else "美股"
+        auto_rows: List[Dict[str, Any]] = []
+
+        for index, board in enumerate(boards, start=1):
+            board_name = str(board.get("board_name") or "").strip()
+            if not board_name or board_name in configured_board_names:
+                continue
+            key = f"{market_key}_auto_board_{index}"
+            if key in configured_keys:
+                continue
+            auto_rows.append(
+                {
+                    "key": key,
+                    "label": f"{market_label}行业·{board_name}",
+                    "description": str(board.get("description") or f"自动扩展的{market_label}行业板块范围。"),
+                    "kind": "board",
+                    "board_type": ScreenerBoardType.INDUSTRY.value,
+                    "board_name": board_name,
+                    "fallback_codes": _boost_overseas_board_codes(
+                        market,
+                        board_name,
+                        _extract_board_codes(board),
+                    ),
+                }
+            )
+
+        base_count = len(STOCK_SCREENER_SCOPE_CONFIG.get(market_key, []))
+        projected_total = base_count + len(auto_rows)
+        if projected_total >= minimum_total:
+            return auto_rows
+
+        tier_index = 0
+        for board in boards:
+            board_name = str(board.get("board_name") or "").strip()
+            if not board_name:
+                continue
+            for tier in list(board.get("tiers") or []):
+                if projected_total >= minimum_total:
+                    break
+                tier_codes = [
+                    str(code).strip()
+                    for code in list((tier or {}).get("codes") or [])
+                    if str(code).strip()
+                ]
+                if not tier_codes:
+                    continue
+                tier_label = str((tier or {}).get("label") or "").strip() or "代表池"
+                key = f"{market_key}_auto_tier_{tier_index}"
+                tier_index += 1
+                if key in configured_keys:
+                    continue
+                auto_rows.append(
+                    {
+                        "key": key,
+                        "label": f"{market_label}{board_name}·{tier_label}",
+                        "description": f"{market_label}{board_name}板块的{tier_label}分层代表池。",
+                        "kind": "preset_pool",
+                        "codes": tier_codes,
+                    }
+                )
+                projected_total += 1
+            if projected_total >= minimum_total:
+                break
+        return auto_rows
+
     def scope_catalog(self, market: Optional[MarketType] = None) -> List[ScreenerScopeOption]:
         markets = [market] if market is not None else [MarketType.CN, MarketType.HK, MarketType.US]
         options: List[ScreenerScopeOption] = []
         for current_market in markets:
-            for scope in STOCK_SCREENER_SCOPE_CONFIG.get(_scope_market_key(current_market), []):
+            scope_rows, auto_count = self._get_scope_rows(current_market)
+            for scope in scope_rows:
                 preview_basics = self._preview_scope_basics(current_market, scope)
                 estimated_count = len(preview_basics) if preview_basics else None
                 options.append(
@@ -969,16 +1399,51 @@ class StockScreenerService:
                 )
         return options
 
+    def _get_scope_rows(self, market: MarketType) -> Tuple[List[Dict[str, Any]], int]:
+        scope_rows = list(STOCK_SCREENER_SCOPE_CONFIG.get(_scope_market_key(market), []))
+        auto_count = 0
+        if market == MarketType.CN:
+            auto_rows = self._build_cn_auto_board_scopes()
+            scope_rows.extend(auto_rows)
+            auto_count = len(auto_rows)
+            logger.info(
+                "Loaded CN scope catalog: configured=%s auto_expanded=%s total=%s",
+                len(STOCK_SCREENER_SCOPE_CONFIG.get(_scope_market_key(market), [])),
+                auto_count,
+                len(scope_rows),
+            )
+        elif market in (MarketType.HK, MarketType.US):
+            auto_rows = self._build_overseas_auto_scopes(market)
+            scope_rows.extend(auto_rows)
+            auto_count = len(auto_rows)
+            logger.info(
+                "Loaded %s scope catalog: configured=%s auto_expanded=%s total=%s",
+                market.value.upper(),
+                len(STOCK_SCREENER_SCOPE_CONFIG.get(_scope_market_key(market), [])),
+                auto_count,
+                len(scope_rows),
+            )
+        return scope_rows, auto_count
+
     def board_catalog(self, market: MarketType, board_type: ScreenerBoardType) -> List[ScreenerBoardOption]:
         cached_rows = self._get_cached_board_catalog(market, board_type.value)
         if cached_rows:
+            cache = self._load_board_cache()
+            constituent_counts: Dict[str, int] = {}
+            prefix = f"{market.value}:{board_type.value}:"
+            for key, entry in (cache.get("constituents") or {}).items():
+                if not str(key).startswith(prefix) or not isinstance(entry, dict):
+                    continue
+                items = entry.get("items")
+                if isinstance(items, list):
+                    constituent_counts[str(key)[len(prefix):]] = len(items)
             return [
                 ScreenerBoardOption(
                     market=market,
                     board_type=board_type,
                     board_name=str(row["board_name"]),
                     label=str(row.get("label") or row["board_name"]),
-                    estimated_count=row.get("estimated_count"),
+                    estimated_count=constituent_counts.get(str(row["board_name"]), row.get("estimated_count")),
                     description=row.get("description"),
                     tier_summary=row.get("tier_summary"),
                     tiers=row.get("tiers") or [],
@@ -992,8 +1457,8 @@ class StockScreenerService:
                 rows = _fallback_cn_board_catalog(board_type.value)
                 if not rows:
                     raise
-                source = "config_fallback"
-                logger.warning("Falling back to configured CN %s boards: %s", board_type.value, exc)
+                source = str(rows[0].get("source") or "").strip() or "config_fallback"
+                logger.warning("Falling back to CN %s boards from %s: %s", board_type.value, source, exc)
             logger.info("Loaded %s CN %s boards from %s", len(rows), board_type.value, source)
         else:
             rows = list(STOCK_SCREENER_DYNAMIC_BOARD_CONFIG.get(_scope_market_key(market), {}).get(board_type.value, []))
@@ -1003,7 +1468,13 @@ class StockScreenerService:
             rows = [
                 {
                     **row,
-                    "estimated_count": len(_extract_board_codes(row)),
+                    "estimated_count": len(
+                        _boost_overseas_board_codes(
+                            market,
+                            str(row.get("board_name") or ""),
+                            _extract_board_codes(row),
+                        )
+                    ),
                     "tier_summary": _build_board_tier_summary(row),
                     "tiers": _build_board_tiers(row),
                 }
@@ -1030,7 +1501,7 @@ class StockScreenerService:
         market: MarketType,
         board_type: ScreenerBoardType,
         board_name: str,
-        limit: int = 20,
+        limit: int = 0,
     ) -> ScreenerBoardPreview:
         board_name = (board_name or "").strip()
         if not board_name:
@@ -1039,12 +1510,18 @@ class StockScreenerService:
         cached_entry = self._get_cached_board_entry(market, board_type.value, board_name)
         if cached_entry is not None:
             basics = self._cached_entry_to_basics(cached_entry)
+            if market == MarketType.CN and basics:
+                basics, _ = self._merge_cn_basics_with_sohu(
+                    board_name,
+                    basics,
+                    str(cached_entry.get("source") or "cache"),
+                )
             return ScreenerBoardPreview(
                 market=market,
                 board_type=board_type,
                 board_name=board_name,
                 estimated_count=len(basics),
-                preview_codes=[item.code for item in basics[: max(1, limit)]],
+                preview_codes=[item.code for item in basics],
                 description=cached_entry.get("description"),
                 tier_summary=cached_entry.get("tier_summary"),
                 tiers=cached_entry.get("tiers") or [],
@@ -1065,7 +1542,7 @@ class StockScreenerService:
             board_type=board_type,
             board_name=board_name,
             estimated_count=len(basics),
-            preview_codes=[item.code for item in basics[: max(1, limit)]],
+            preview_codes=[item.code for item in basics],
             description=(board or scope or {}).get("description"),
             tier_summary=_build_board_tier_summary(board) if board else None,
             tiers=_build_board_tiers(board),
@@ -1085,12 +1562,19 @@ class StockScreenerService:
         cached_entry = self._get_cached_board_entry(market, board_type.value, normalized_board_name)
         if cached_entry is not None:
             basics = self._cached_entry_to_basics(cached_entry)
+            source = str(cached_entry.get("source") or "cache")
+            if market == MarketType.CN and basics:
+                basics, source = self._merge_cn_basics_with_sohu(
+                    normalized_board_name,
+                    basics,
+                    source,
+                )
             return ScreenerBoardConstituentResponse(
                 market=market,
                 board_type=board_type,
                 board_name=normalized_board_name,
                 total=len(basics),
-                source=str(cached_entry.get("source") or "cache"),
+                source=source,
                 items=[ScreenerBoardConstituent(code=item.code, name=item.name) for item in basics],
             )
 
@@ -1130,7 +1614,8 @@ class StockScreenerService:
     def _get_scope_definition(self, market: MarketType, scope_key: Optional[str]) -> Optional[Dict[str, Any]]:
         if not scope_key:
             return None
-        for scope in STOCK_SCREENER_SCOPE_CONFIG.get(_scope_market_key(market), []):
+        scope_rows, _ = self._get_scope_rows(market)
+        for scope in scope_rows:
             if scope.get("key") == scope_key:
                 return scope
         return None
@@ -1265,6 +1750,47 @@ class StockScreenerService:
             raise RuntimeError(f"Tushare board member lookup failed for {board_name}: {last_error}") from last_error
         raise RuntimeError(f"Tushare returned no board constituents for {board_name}")
 
+    def _fetch_sohu_cn_board_universe(self, board_name: str) -> Tuple[List[StockBasic], str]:
+        index = _fetch_sohu_cn_board_index()
+        board_id = _resolve_sohu_board_id(board_name, index)
+        if not board_id:
+            return [], "sohu"
+
+        rows = _fetch_sohu_cn_board_constituents(board_id)
+        basics: List[StockBasic] = []
+        seen: set[str] = set()
+        for code, name in rows:
+            normalized = self._normalize_code_for_market(code, MarketType.CN)
+            if normalized is None or normalized in seen:
+                continue
+            seen.add(normalized)
+            basics.append(StockBasic(code=normalized, name=name or self._resolve_name(normalized)))
+        return basics, f"sohu:{board_id}"
+
+    def _merge_cn_basics_with_sohu(
+        self,
+        board_name: str,
+        basics: List[StockBasic],
+        source: str,
+    ) -> Tuple[List[StockBasic], str]:
+        try:
+            sohu_basics, sohu_source = self._fetch_sohu_cn_board_universe(board_name)
+        except Exception as exc:
+            logger.warning("Failed to enrich CN board constituents from Sohu for %s: %s", board_name, exc)
+            return basics, source
+        if not sohu_basics:
+            return basics, source
+        # Keep Sohu live order as the canonical display order, and append
+        # missing symbols from other providers as supplemental entries.
+        merged = _merge_stock_basics(sohu_basics, basics)
+        merged_codes = [item.code for item in merged]
+        base_codes = [item.code for item in basics]
+        if merged_codes == base_codes:
+            return basics, source
+        if sohu_source in source:
+            return merged, source
+        return merged, f"{source}+{sohu_source}"
+
     def _load_cn_board_basics(
         self,
         board_type: str,
@@ -1272,26 +1798,96 @@ class StockScreenerService:
         fallback_codes: List[str],
     ) -> Tuple[List[StockBasic], str]:
         last_error: Optional[Exception] = None
+        akshare_basics: List[StockBasic] = []
+        tushare_basics: List[StockBasic] = []
+        sohu_basics: List[StockBasic] = []
+        fallback_basics: List[StockBasic] = []
+        akshare_source = "akshare"
+        tushare_source = "tushare"
+        sohu_source = "sohu"
 
         if board_name:
             try:
-                basics, source = self._fetch_cn_board_universe(board_type, board_name)
-                if basics:
-                    return basics, source
+                akshare_basics, akshare_source = self._fetch_cn_board_universe(board_type, board_name)
             except Exception as exc:
                 last_error = exc
                 logger.warning("Failed to load CN board constituents from AkShare for %s: %s", board_name, exc)
 
             try:
-                basics, source = self._fetch_tushare_cn_board_universe(board_type, board_name)
-                if basics:
-                    return basics, source
+                tushare_basics, tushare_source = self._fetch_tushare_cn_board_universe(board_type, board_name)
             except Exception as exc:
                 last_error = exc
                 logger.warning("Failed to load CN board constituents from Tushare for %s: %s", board_name, exc)
 
+            try:
+                sohu_basics, sohu_source = self._fetch_sohu_cn_board_universe(board_name)
+            except Exception as exc:
+                last_error = last_error or exc
+                logger.warning("Failed to load CN board constituents from Sohu for %s: %s", board_name, exc)
+
         if fallback_codes:
-            return self._build_custom_universe(fallback_codes, MarketType.CN), "fallback"
+            fallback_basics = self._build_custom_universe(fallback_codes, MarketType.CN)
+
+        merged_groups: List[List[StockBasic]] = []
+        source_parts: List[str] = []
+        if sohu_basics:
+            merged_groups.append(sohu_basics)
+            source_parts.append(sohu_source)
+        if akshare_basics:
+            merged_groups.append(akshare_basics)
+            source_parts.append(akshare_source)
+        if tushare_basics:
+            merged_groups.append(tushare_basics)
+            source_parts.append(tushare_source)
+
+        if merged_groups:
+            merged = _merge_stock_basics(*merged_groups)
+            if fallback_basics:
+                with_fallback = _merge_stock_basics(*merged_groups, fallback_basics)
+                if len(with_fallback) > len(merged):
+                    merged = with_fallback
+                    source_parts.append("fallback")
+            dedup_source_parts: List[str] = []
+            seen_sources: set[str] = set()
+            for value in source_parts:
+                normalized = str(value or "").strip()
+                if not normalized or normalized in seen_sources:
+                    continue
+                seen_sources.add(normalized)
+                dedup_source_parts.append(normalized)
+            source = "+".join(dedup_source_parts) if dedup_source_parts else "mixed"
+            logger.info(
+                "CN board constituents loaded for %s (%s): sohu=%s akshare=%s tushare=%s fallback=%s merged=%s source=%s",
+                board_name or "<empty>",
+                board_type,
+                len(sohu_basics),
+                len(akshare_basics),
+                len(tushare_basics),
+                len(fallback_basics),
+                len(merged),
+                source,
+            )
+            return merged, source
+
+        if fallback_basics:
+            logger.info(
+                "CN board constituents loaded for %s (%s): sohu=0 akshare=0 tushare=0 fallback=%s merged=%s source=fallback",
+                board_name or "<empty>",
+                board_type,
+                len(fallback_basics),
+                len(fallback_basics),
+            )
+            return fallback_basics, "fallback"
+
+        logger.warning(
+            "CN board constituents empty for %s (%s): sohu=%s akshare=%s tushare=%s fallback=%s",
+            board_name or "<empty>",
+            board_type,
+            len(sohu_basics),
+            len(akshare_basics),
+            len(tushare_basics),
+            len(fallback_basics),
+        )
         if last_error is not None:
             raise last_error
         return [], "empty"
@@ -1305,13 +1901,31 @@ class StockScreenerService:
             return _build_preview_basics(codes)
         if kind == "board":
             if market == MarketType.CN:
+                board_name = str(scope.get("board_name") or "").strip()
+                board_type = str(scope.get("board_type") or ScreenerBoardType.INDUSTRY.value).strip()
+                if board_name and board_type:
+                    cached_entry = self._get_cached_board_entry(market, board_type, board_name)
+                    cached_basics = self._cached_entry_to_basics(cached_entry)
+                    if cached_basics:
+                        logger.debug(
+                            "Scope preview from cache for %s (%s): count=%s source=%s",
+                            board_name,
+                            board_type,
+                            len(cached_basics),
+                            str((cached_entry or {}).get("source") or "cache"),
+                        )
+                        return cached_basics
                 fallback_codes = list(scope.get("fallback_codes") or [])
+                if fallback_codes:
+                    logger.debug("Scope preview fallback list for %s (%s): count=%s", board_name, board_type, len(fallback_codes))
                 return _build_preview_basics(fallback_codes)
             board_name = str(scope.get("board_name") or "")
             board_type = str(scope.get("board_type") or ScreenerBoardType.INDUSTRY.value)
             if board_name:
                 board = self._get_dynamic_board_definition(market, board_type, board_name)
-                return _build_preview_basics(_extract_board_codes(board or {}))
+                return _build_preview_basics(
+                    _boost_overseas_board_codes(market, board_name, _extract_board_codes(board or {}))
+                )
         return []
 
     def _get_dynamic_board_definition(
@@ -1333,16 +1947,18 @@ class StockScreenerService:
         board = self._get_dynamic_board_definition(market, board_type, board_name)
         if board is None:
             raise ValueError(f"未找到 {market.value.upper()} 市场的板块: {board_name}")
-        codes = _extract_board_codes(board)
+        seed_codes = _extract_board_codes(board)
+        codes = _boost_overseas_board_codes(market, board_name, seed_codes)
         if not codes:
             return []
         basics = self._build_custom_universe(codes, market)
+        source = "config+preset_pool" if len(codes) > len(seed_codes) else "config"
         self._persist_board_basics(
             market,
             board_type,
             board_name,
             basics,
-            "config",
+            source,
             description=board.get("description"),
             tier_summary=_build_board_tier_summary(board),
             tiers=_build_board_tiers(board),
@@ -1353,6 +1969,13 @@ class StockScreenerService:
         cached_entry = self._get_cached_board_entry(market, board_type, board_name)
         cached_basics = self._cached_entry_to_basics(cached_entry)
         if cached_basics:
+            if market == MarketType.CN:
+                ordered_basics, _ = self._merge_cn_basics_with_sohu(
+                    board_name,
+                    cached_basics,
+                    str((cached_entry or {}).get("source") or "cache"),
+                )
+                return ordered_basics
             return cached_basics
         if market == MarketType.CN:
             scope = self._find_board_scope_definition(market, board_type, board_name)
@@ -1392,6 +2015,14 @@ class StockScreenerService:
             basics.append(StockBasic(code=normalized, name=name or self._resolve_name(normalized)))
         return basics, source
 
+    def _resolve_scan_workers(self, total_candidates: int) -> int:
+        return max(1, min(self._max_workers, max(1, total_candidates)))
+
+    def _should_emit_progress(self, scanned: int, total_candidates: int) -> bool:
+        if scanned >= total_candidates:
+            return True
+        return scanned <= 3 or scanned % self._progress_update_step == 0
+
     def scan(
         self,
         request: ScreenerScanRequest,
@@ -1410,6 +2041,18 @@ class StockScreenerService:
         else:
             lookback = max(lookback, _max_lookback_for_conditions([c.indicator for c in request.conditions or []]))
         total_candidates = len(universe)
+        scan_workers = self._resolve_scan_workers(total_candidates)
+        started_at = time.perf_counter()
+
+        logger.info(
+            "[Screener] scan start: market=%s mode=%s total=%s lookback=%s workers=%s progress_step=%s",
+            request.market.value,
+            request.mode.value if isinstance(request.mode, ScreenerMode) else str(request.mode),
+            total_candidates,
+            lookback,
+            scan_workers,
+            self._progress_update_step,
+        )
 
         if progress_callback is not None:
             if total_candidates == 0:
@@ -1418,46 +2061,74 @@ class StockScreenerService:
                 progress_callback(0, total_candidates, 0, f"股票池准备完成，共 {total_candidates} 只标的待扫描")
 
         results: List[ScreenerScanResultItem] = []
-        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
+        history_source_hint: Dict[str, str] = {}
+        history_hint_lock = threading.Lock()
+        scanned = 0
+        with ThreadPoolExecutor(max_workers=scan_workers) as executor:
             futures = [
-                executor.submit(self._evaluate_stock, basic, request, lookback)
+                executor.submit(self._evaluate_stock, basic, request, lookback, None, history_source_hint, history_hint_lock)
                 if parsed_formula is None else
-                executor.submit(self._evaluate_stock, basic, request, lookback, parsed_formula)
+                executor.submit(self._evaluate_stock, basic, request, lookback, parsed_formula, history_source_hint, history_hint_lock)
                 for basic in universe
             ]
-            scanned = 0
             for future in as_completed(futures):
+                scanned += 1
                 try:
                     item = future.result()
                 except Exception as exc:  # pragma: no cover - defensive log
                     logger.debug("stock screener worker failed: %s", exc, exc_info=True)
-                    scanned += 1
-                    if progress_callback is not None:
+                    if progress_callback is not None and self._should_emit_progress(scanned, total_candidates):
                         progress_callback(scanned, total_candidates, len(results), f"正在扫描 {scanned}/{total_candidates}，当前命中 {len(results)} 条")
                     continue
                 if item is not None:
                     results.append(item)
-                scanned += 1
-                if progress_callback is not None:
+                if progress_callback is not None and self._should_emit_progress(scanned, total_candidates):
                     progress_callback(scanned, total_candidates, len(results), f"正在扫描 {scanned}/{total_candidates}，当前命中 {len(results)} 条")
 
         reverse = request.sort_dir.lower() != "asc"
         sort_key = self._build_sort_key(request.sort_by)
         results.sort(key=sort_key, reverse=reverse)
         total = len(results)
+        elapsed = max(time.perf_counter() - started_at, 1e-6)
+        scanned_per_second = float(scanned) / elapsed
+        scanned_per_minute = scanned_per_second * 60.0
         sliced = results[request.offset: request.offset + request.limit]
         csv_payload = self._to_csv(sliced) if request.export_csv else None
         if progress_callback is not None:
             progress_callback(total_candidates, total_candidates, total, f"扫描完成，共命中 {total} 条")
+        logger.info(
+            "[Screener] scan done: market=%s total=%s matched=%s workers=%s elapsed=%.2fs speed=%.2f stocks/s (%.1f/min)",
+            request.market.value,
+            total_candidates,
+            total,
+            scan_workers,
+            elapsed,
+            scanned_per_second,
+            scanned_per_minute,
+        )
+        if total_candidates >= 50 and elapsed > 60:
+            logger.warning(
+                "[Screener] speed target miss: total=%s elapsed=%.2fs (< 60s expected for 50 stocks)",
+                total_candidates,
+                elapsed,
+            )
         return ScreenerScanResponse(total=total, results=sliced, csv=csv_payload)
 
     def _build_universe(self, request: ScreenerScanRequest) -> List[StockBasic]:
+        universe_source = "unknown"
         if request.codes:
             universe = self._build_custom_universe(request.codes, request.market)
+            universe_source = "codes"
         elif request.board_name:
             if not request.board_type:
                 raise ValueError("board_type is required when board_name is provided")
             universe = self._build_board_universe(request.market, request.board_type.value, request.board_name)
+            universe_source = "request_board"
+        elif request.market == MarketType.CN and request.board_filters:
+            universe = self._build_cn_board_filter_universe(request.board_filters)
+            if not universe:
+                raise ValueError(f"未找到匹配板块成分股: {','.join(request.board_filters)}")
+            universe_source = "board_filters_union"
         else:
             scope = self._get_scope_definition(request.market, request.scope)
             if scope is not None:
@@ -1466,6 +2137,7 @@ class StockScreenerService:
                     if request.market != MarketType.CN:
                         raise ValueError("full-market list is only available for cn")
                     universe = self._list_a_share()
+                    universe_source = f"scope:{request.scope or scope.get('key')}:full_market"
                 elif kind == "board":
                     if request.market != MarketType.CN:
                         raise ValueError("board scope is only supported for cn")
@@ -1474,8 +2146,10 @@ class StockScreenerService:
                         str(scope.get("board_name") or ""),
                         list(scope.get("fallback_codes") or []),
                     )
+                    universe_source = f"scope:{request.scope or scope.get('key')}:board"
                 elif kind == "preset_pool":
                     universe = self._build_custom_universe(list(scope.get("codes") or []), request.market)
+                    universe_source = f"scope:{request.scope or scope.get('key')}:preset_pool"
                 elif kind == "board_dynamic":
                     board_name = (request.board_name or "").strip()
                     board_type = request.board_type.value if request.board_type else str(scope.get("board_type") or "")
@@ -1485,17 +2159,110 @@ class StockScreenerService:
                     if not board_type:
                         raise ValueError("board_type is required for dynamic board scope")
                     universe = self._build_board_universe(request.market, board_type, board_name)
+                    universe_source = f"scope:{request.scope or scope.get('key')}:board_dynamic"
                 elif kind == "custom_pool":
                     raise ValueError("custom pool scope requires explicit codes")
                 else:
                     raise ValueError(f"unsupported scope kind: {kind}")
             else:
+                if request.scope:
+                    raise ValueError(f"unknown scope: {request.scope}")
                 if request.market != MarketType.CN:
                     raise ValueError("hk/us scan requires explicit codes or a preset scope; full-market list is only available for cn")
                 universe = self._list_a_share()
+                universe_source = "default_cn_full_market"
+
+        original_total = len(universe)
         if request.scan_limit:
-            return universe[: request.scan_limit]
+            limited_universe = universe[: request.scan_limit]
+            logger.info(
+                "[Screener] universe prepared: market=%s scope=%s board_type=%s board_name=%s codes=%s source=%s total=%s returned=%s scan_limit=%s",
+                request.market.value,
+                request.scope or "",
+                request.board_type.value if request.board_type else "",
+                request.board_name or "",
+                len(request.codes or []),
+                universe_source,
+                original_total,
+                len(limited_universe),
+                request.scan_limit,
+            )
+            return limited_universe
+
+        logger.info(
+            "[Screener] universe prepared: market=%s scope=%s board_type=%s board_name=%s codes=%s source=%s total=%s returned=%s",
+            request.market.value,
+            request.scope or "",
+            request.board_type.value if request.board_type else "",
+            request.board_name or "",
+            len(request.codes or []),
+            universe_source,
+            original_total,
+            original_total,
+        )
         return universe
+
+    def _build_cn_board_filter_universe(self, board_filters: List[str]) -> List[StockBasic]:
+        normalized_filters: List[str] = []
+        seen_filters: set[str] = set()
+        for name in board_filters:
+            normalized_name = str(name or "").strip()
+            if not normalized_name or normalized_name in seen_filters:
+                continue
+            seen_filters.add(normalized_name)
+            normalized_filters.append(normalized_name)
+
+        merged: List[StockBasic] = []
+        seen_codes: set[str] = set()
+        for board_name in normalized_filters:
+            candidate_types = [ScreenerBoardType.INDUSTRY.value, ScreenerBoardType.CONCEPT.value]
+            configured_types = [
+                board_type
+                for board_type in candidate_types
+                if self._find_board_scope_definition(MarketType.CN, board_type, board_name) is not None
+            ]
+            if configured_types:
+                candidate_types = configured_types
+            else:
+                cached_types = [
+                    board_type
+                    for board_type in candidate_types
+                    if self._get_cached_board_entry(MarketType.CN, board_type, board_name) is not None
+                ]
+                if cached_types:
+                    candidate_types = cached_types
+
+            matched = False
+            for board_type in candidate_types:
+                try:
+                    # Reuse generic board-universe path so cached constituents are
+                    # consumed first, avoiding repeated upstream network calls.
+                    basics = self._build_board_universe(MarketType.CN, board_type, board_name)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to build board-filter universe for %s (%s): %s",
+                        board_name,
+                        board_type,
+                        exc,
+                    )
+                    continue
+                if not basics:
+                    continue
+                matched = True
+                for basic in basics:
+                    code = str(basic.code or "").strip()
+                    if not code or code in seen_codes:
+                        continue
+                    seen_codes.add(code)
+                    merged.append(basic)
+            if not matched:
+                logger.warning("Board filter did not match CN board constituents: %s", board_name)
+        logger.info(
+            "[Screener] board filter universe prepared: filters=%s total=%s",
+            ",".join(normalized_filters),
+            len(merged),
+        )
+        return merged
 
     def _list_a_share(self) -> List[StockBasic]:
         manager = self._get_manager()
@@ -1534,14 +2301,28 @@ class StockScreenerService:
         seen: set[str] = set()
 
         for code in codes:
-            normalized = self._normalize_code_for_market(code, market)
-            if normalized is None:
-                invalid_codes.append(str(code))
+            raw_value = str(code or "").strip()
+            if not raw_value:
                 continue
-            if normalized in seen:
-                continue
-            seen.add(normalized)
-            basics.append(StockBasic(code=normalized, name=self._resolve_name(normalized)))
+
+            # Be tolerant to malformed CN code batches such as
+            # "002218.300528" / "002218,300528" / "002218300528".
+            # If multiple 6-digit chunks are embedded in one token, split them.
+            candidate_values = [raw_value]
+            if market == MarketType.CN:
+                embedded_cn_codes = re.findall(r"\d{6}", raw_value)
+                if len(embedded_cn_codes) >= 2:
+                    candidate_values = embedded_cn_codes
+
+            for candidate in candidate_values:
+                normalized = self._normalize_code_for_market(candidate, market)
+                if normalized is None:
+                    invalid_codes.append(str(candidate))
+                    continue
+                if normalized in seen:
+                    continue
+                seen.add(normalized)
+                basics.append(StockBasic(code=normalized, name=self._resolve_name(normalized)))
 
         if invalid_codes:
             raise ValueError(f"invalid {market.value} codes: {', '.join(invalid_codes)}")
@@ -1579,8 +2360,20 @@ class StockScreenerService:
             pass
         return code
 
-    def _get_history(self, code: str, lookback: int) -> Tuple[pd.DataFrame, str]:
-        return self._get_manager().get_daily_data(code, days=lookback)
+    def _get_history(
+        self,
+        code: str,
+        lookback: int,
+        preferred_source: Optional[str] = None,
+    ) -> Tuple[pd.DataFrame, str]:
+        manager = self._get_manager()
+        if preferred_source:
+            try:
+                return manager.get_daily_data(code, days=lookback, preferred_fetcher=preferred_source)
+            except TypeError as exc:
+                if "preferred_fetcher" not in str(exc):
+                    raise
+        return manager.get_daily_data(code, days=lookback)
 
     def _get_boards(self, code: str) -> List[str]:
         try:
@@ -1595,21 +2388,37 @@ class StockScreenerService:
         request: ScreenerScanRequest,
         lookback: int,
         parsed_formula: Optional[FormulaParseResult] = None,
+        history_source_hint: Optional[Dict[str, str]] = None,
+        history_hint_lock: Optional[threading.Lock] = None,
     ) -> Optional[ScreenerScanResultItem]:
+        preferred_source: Optional[str] = None
+        if history_source_hint is not None and history_hint_lock is not None:
+            with history_hint_lock:
+                preferred_source = history_source_hint.get("source")
         try:
-            df, source = self._get_history(basic.code, lookback)
+            df, source = self._get_history(basic.code, lookback, preferred_source=preferred_source)
         except Exception:
             return None
         if df is None or df.empty:
             return None
+        if source and history_source_hint is not None and history_hint_lock is not None:
+            with history_hint_lock:
+                if not history_source_hint.get("source"):
+                    history_source_hint["source"] = source
 
         boards: List[str] = []
         if request.board_filters:
+            should_filter_runtime_boards = not (
+                request.market == MarketType.CN
+                and not request.codes
+                and not request.board_name
+            )
             boards = self._get_boards(basic.code)
-            if boards and not set(request.board_filters).intersection(set(boards)):
-                return None
-            if not boards:
-                return None
+            if should_filter_runtime_boards:
+                if boards and not set(request.board_filters).intersection(set(boards)):
+                    return None
+                if not boards:
+                    return None
 
         heat = self._compute_heat(df)
         if request.volume_heat_ratio is not None and heat is not None and heat < request.volume_heat_ratio:

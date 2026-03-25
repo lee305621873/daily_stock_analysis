@@ -31,6 +31,15 @@ from .fundamental_adapter import AkshareFundamentalAdapter
 logger = logging.getLogger(__name__)
 
 
+# NOTE:
+# AkShare's dependency stack may initialize JS runtimes (e.g. mini_racer / V8)
+# that are not fully thread-safe in high-concurrency fetch loops.  When multiple
+# worker threads hit AkShare simultaneously, the process can crash with
+# `FATAL:address_pool_manager.cc ... Check failed: !pool->IsInitialized()`.
+# Serialize AkShare daily-data calls to avoid that hard crash.
+_AKSHARE_DAILY_DATA_LOCK = RLock()
+
+
 # === 标准化列名定义 ===
 STANDARD_COLUMNS = ['date', 'open', 'high', 'low', 'close', 'volume', 'amount', 'pct_chg']
 
@@ -702,7 +711,8 @@ class DataFetcherManager:
         stock_code: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        days: int = 30
+        days: int = 30,
+        preferred_fetcher: Optional[str] = None,
     ) -> Tuple[pd.DataFrame, str]:
         """
         获取日线数据（自动切换数据源）
@@ -719,6 +729,7 @@ class DataFetcherManager:
             start_date: 开始日期
             end_date: 结束日期
             days: 获取天数
+            preferred_fetcher: 可选，指定优先尝试的数据源名称（如 AkshareFetcher）
             
         Returns:
             Tuple[DataFrame, str]: (数据, 成功的数据源名称)
@@ -732,19 +743,26 @@ class DataFetcherManager:
         stock_code = normalize_stock_code(stock_code)
 
         errors = []
-        total_fetchers = len(self._fetchers)
+        ordered_fetchers = list(self._fetchers)
+        if preferred_fetcher:
+            preferred_name = str(preferred_fetcher).strip().lower()
+            preferred = next((item for item in ordered_fetchers if item.name.lower() == preferred_name), None)
+            if preferred is not None:
+                ordered_fetchers = [preferred] + [item for item in ordered_fetchers if item is not preferred]
+        total_fetchers = len(ordered_fetchers)
         request_start = time.time()
 
         # 快速路径：美股指数与美股股票直接路由到 YfinanceFetcher
         if is_us_index_code(stock_code) or is_us_stock_code(stock_code):
-            for attempt, fetcher in enumerate(self._fetchers, start=1):
+            for attempt, fetcher in enumerate(ordered_fetchers, start=1):
                 if fetcher.name == "YfinanceFetcher":
                     try:
                         logger.info(
                             f"[数据源尝试 {attempt}/{total_fetchers}] [{fetcher.name}] "
                             f"美股/美股指数 {stock_code} 直接路由..."
                         )
-                        df = fetcher.get_daily_data(
+                        df = self._call_fetcher_daily_data(
+                            fetcher,
                             stock_code=stock_code,
                             start_date=start_date,
                             end_date=end_date,
@@ -772,10 +790,11 @@ class DataFetcherManager:
             logger.error(f"[数据源终止] {stock_code} 获取失败: elapsed={elapsed:.2f}s\n{error_summary}")
             raise DataFetchError(error_summary)
 
-        for attempt, fetcher in enumerate(self._fetchers, start=1):
+        for attempt, fetcher in enumerate(ordered_fetchers, start=1):
             try:
                 logger.info(f"[数据源尝试 {attempt}/{total_fetchers}] [{fetcher.name}] 获取 {stock_code}...")
-                df = fetcher.get_daily_data(
+                df = self._call_fetcher_daily_data(
+                    fetcher,
                     stock_code=stock_code,
                     start_date=start_date,
                     end_date=end_date,
@@ -799,7 +818,7 @@ class DataFetcherManager:
                 )
                 errors.append(error_msg)
                 if attempt < total_fetchers:
-                    next_fetcher = self._fetchers[attempt]
+                    next_fetcher = ordered_fetchers[attempt]
                     logger.info(f"[数据源切换] {stock_code}: [{fetcher.name}] -> [{next_fetcher.name}]")
                 # 继续尝试下一个数据源
                 continue
@@ -809,6 +828,30 @@ class DataFetcherManager:
         elapsed = time.time() - request_start
         logger.error(f"[数据源终止] {stock_code} 获取失败: elapsed={elapsed:.2f}s\n{error_summary}")
         raise DataFetchError(error_summary)
+
+    def _call_fetcher_daily_data(
+        self,
+        fetcher: BaseFetcher,
+        *,
+        stock_code: str,
+        start_date: Optional[str],
+        end_date: Optional[str],
+        days: int,
+    ):
+        if fetcher.name == "AkshareFetcher":
+            with _AKSHARE_DAILY_DATA_LOCK:
+                return fetcher.get_daily_data(
+                    stock_code=stock_code,
+                    start_date=start_date,
+                    end_date=end_date,
+                    days=days,
+                )
+        return fetcher.get_daily_data(
+            stock_code=stock_code,
+            start_date=start_date,
+            end_date=end_date,
+            days=days,
+        )
     
     @property
     def available_fetchers(self) -> List[str]:

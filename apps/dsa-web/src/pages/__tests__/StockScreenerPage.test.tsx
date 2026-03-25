@@ -189,6 +189,8 @@ describe('StockScreenerPage', () => {
     expect(screen.getByText('技术指标选股')).toBeTruthy();
     expect(screen.getByText('公式编辑器')).toBeTruthy();
     expect(getConfigSelect(1)).toBeTruthy();
+    const templateSelect = await screen.findByLabelText('示例模板');
+    expect((templateSelect as HTMLSelectElement).options.length).toBeGreaterThanOrEqual(21);
   });
 
   it('shows a validation alert when custom pool is empty and scan is clicked', async () => {
@@ -231,7 +233,7 @@ describe('StockScreenerPage', () => {
           scanLimit: 6,
           scope: 'us_semiconductor',
           codes: undefined,
-          asyncMode: false,
+          asyncMode: true,
         }),
       );
     });
@@ -254,7 +256,7 @@ describe('StockScreenerPage', () => {
     fireEvent.change(boardSelect as HTMLSelectElement, { target: { value: '半导体' } });
 
     await waitFor(() => {
-      expect(mockedScreenerApi.getBoardPreview).toHaveBeenCalledWith('cn', 'industry', '半导体', 20);
+      expect(mockedScreenerApi.getBoardPreview).toHaveBeenCalledWith('cn', 'industry', '半导体', 0);
     });
 
     fireEvent.click(screen.getAllByRole('button', { name: '开始选股' })[0]);
@@ -267,7 +269,7 @@ describe('StockScreenerPage', () => {
           boardName: '半导体',
           boardType: 'industry',
           codes: undefined,
-          asyncMode: false,
+          asyncMode: true,
         }),
       );
     });
@@ -280,10 +282,32 @@ describe('StockScreenerPage', () => {
     fireEvent.change(getConfigSelect(1), { target: { value: 'cn_semiconductor' } });
 
     await waitFor(() => {
-      expect(mockedScreenerApi.getBoardPreview).toHaveBeenCalledWith('cn', 'industry', '半导体', 20);
+      expect(mockedScreenerApi.getBoardPreview).toHaveBeenCalledWith('cn', 'industry', '半导体', 0);
     });
 
     expect(await screen.findByText(/将按 半导体 的完整股票池扫描/)).toBeTruthy();
+  });
+
+  it('passes preset cn board metadata in scan request', async () => {
+    render(<StockScreenerPage />);
+
+    fireEvent.change(await screen.findByLabelText('选股模式'), { target: { value: 'condition' } });
+    await screen.findByRole('option', { name: 'A 股半导体' });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'cn_semiconductor' } });
+    fireEvent.click(screen.getAllByRole('button', { name: '开始选股' })[0]);
+
+    await waitFor(() => {
+      expect(mockedScreenerApi.scan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          market: 'cn',
+          scope: 'cn_semiconductor',
+          boardName: '半导体',
+          boardType: 'industry',
+          codes: undefined,
+          asyncMode: true,
+        }),
+      );
+    });
   });
 
   it('shows tier details for configured hk dynamic board pools', async () => {
@@ -509,6 +533,8 @@ describe('StockScreenerPage', () => {
 
     render(<StockScreenerPage />);
 
+    await screen.findByRole('option', { name: 'A 股全市场' });
+    fireEvent.change(getConfigSelect(1), { target: { value: 'all_market' } });
     fireEvent.click(screen.getAllByRole('button', { name: '开始选股' })[0]);
 
     await waitFor(() => {

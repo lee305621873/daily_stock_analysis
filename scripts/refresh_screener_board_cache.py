@@ -26,6 +26,7 @@ from src.data.stock_screener_scope_config import STOCK_SCREENER_DYNAMIC_BOARD_CO
 from src.services.stock_screener_service import (
     StockBasic,
     StockScreenerService,
+    _boost_overseas_board_codes,
     _build_board_tier_summary,
     _build_board_tiers,
     _extract_board_codes,
@@ -51,6 +52,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="when --cn-all-dynamic is enabled, limit the number of CN boards per board type for testing",
+    )
+    parser.add_argument(
+        "--cn-seed-per-type",
+        type=int,
+        default=12,
+        help="when --cn-all-dynamic is disabled, still warm this many CN boards per type into cache (default: 12)",
     )
     parser.add_argument(
         "--output",
@@ -112,7 +119,9 @@ def _load_cn_catalog_rows(board_type: str) -> Tuple[List[Dict[str, object]], str
     try:
         return _fetch_cn_board_catalog(board_type)
     except Exception:
-        return _fallback_cn_board_catalog(board_type), "config_fallback"
+        rows = _fallback_cn_board_catalog(board_type)
+        source = str(rows[0].get("source") or "").strip() if rows else ""
+        return rows, source or "config_fallback"
 
 
 def _refresh_cn_market(
@@ -120,6 +129,7 @@ def _refresh_cn_market(
     service: StockScreenerService,
     include_all_dynamic: bool,
     limit: int | None,
+    seed_per_type: int,
 ) -> None:
     now = datetime.now(timezone.utc).isoformat()
     for board_type in ("industry", "concept"):
@@ -145,6 +155,12 @@ def _refresh_cn_market(
             target_boards.extend(
                 str(row.get("board_name") or "").strip()
                 for row in catalog_rows
+                if str(row.get("board_name") or "").strip()
+            )
+        else:
+            target_boards.extend(
+                str(row.get("board_name") or "").strip()
+                for row in catalog_rows[: max(0, int(seed_per_type))]
                 if str(row.get("board_name") or "").strip()
             )
 
@@ -209,8 +225,11 @@ def _refresh_config_market(
             if not board_name:
                 continue
             snapshot = live_snapshots.get(board_name) or {}
-            items = list(snapshot.get("items") or _config_board_items(_extract_board_codes(board)))
-            source = str(snapshot.get("source") or "config")
+            seed_codes = _extract_board_codes(board)
+            boosted_codes = _boost_overseas_board_codes(market_enum, board_name, seed_codes)
+            items = list(snapshot.get("items") or _config_board_items(boosted_codes))
+            default_source = "config+preset_pool" if len(boosted_codes) > len(seed_codes) else "config"
+            source = str(snapshot.get("source") or default_source)
             catalog_rows.append({
                 "board_name": board_name,
                 "label": str(board.get("label") or board_name),
@@ -243,7 +262,13 @@ def main() -> int:
     service = StockScreenerService()
 
     if "cn" in selected_markets:
-        _refresh_cn_market(cache, service, include_all_dynamic=args.cn_all_dynamic, limit=args.cn_limit)
+        _refresh_cn_market(
+            cache,
+            service,
+            include_all_dynamic=args.cn_all_dynamic,
+            limit=args.cn_limit,
+            seed_per_type=args.cn_seed_per_type,
+        )
     if "hk" in selected_markets:
         _refresh_config_market(
             cache,

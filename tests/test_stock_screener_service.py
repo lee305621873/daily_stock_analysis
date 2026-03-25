@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+import types
 from unittest.mock import patch
 
 import pandas as pd
@@ -46,6 +47,23 @@ class _FakeManager:
 
     def get_belong_boards(self, code: str):
         return [{"name": "白酒"}]
+
+
+class _HintAwareManager(_FakeManager):
+    def __init__(self) -> None:
+        super().__init__()
+        self.preferred_fetchers: list[str | None] = []
+
+    def get_daily_data(
+        self,
+        stock_code: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        days: int = 250,
+        preferred_fetcher: str | None = None,
+    ):
+        self.preferred_fetchers.append(preferred_fetcher)
+        return super().get_daily_data(stock_code, days=days)
 
 
 def _request(**kwargs) -> ScreenerScanRequest:
@@ -100,6 +118,13 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid us codes"):
             service._build_custom_universe(["AAPL", "700"], MarketType.US)  # pylint: disable=protected-access
 
+    def test_build_custom_universe_splits_compound_cn_codes(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        result = service._build_custom_universe(["002218.300528"], MarketType.CN)  # pylint: disable=protected-access
+
+        self.assertEqual([item.code for item in result], ["002218", "300528"])
+
     def test_build_universe_applies_scan_limit(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
 
@@ -121,6 +146,103 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         self.assertEqual(semiconductor.preview_codes[:2], ["603986", "688041"])
         self.assertGreaterEqual(semiconductor.estimated_count or 0, 10)
 
+    def test_scope_catalog_prefers_cached_cn_board_constituents(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        self._board_cache["constituents"]["cn:industry:半导体"] = {
+            "items": [
+                {"code": "603986", "name": "兆易创新"},
+                {"code": "688981", "name": "中芯国际"},
+                {"code": "002371", "name": "北方华创"},
+            ],
+            "source": "sohu:5558+akshare",
+        }
+
+        scopes = service.scope_catalog(MarketType.CN)
+        semiconductor = next(item for item in scopes if item.key == "cn_semiconductor")
+
+        self.assertEqual(semiconductor.estimated_count, 3)
+        self.assertEqual(semiconductor.preview_codes[:3], ["603986", "688981", "002371"])
+
+    def test_scope_catalog_expands_cn_auto_board_scopes_from_cache(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        industry_rows = []
+        concept_rows = []
+        for idx in range(1, 13):
+            board_name = f"测试行业{idx}"
+            industry_rows.append({"board_name": board_name, "label": board_name, "description": "auto industry", "source": "sohu"})
+            self._board_cache["constituents"][f"cn:industry:{board_name}"] = {
+                "items": [{"code": f"{600000 + idx * 100 + seq}", "name": f"行业股{idx}-{seq}"} for seq in range(25 - idx)],
+                "source": "sohu:test",
+            }
+        for idx in range(1, 8):
+            board_name = f"测试概念{idx}"
+            concept_rows.append({"board_name": board_name, "label": board_name, "description": "auto concept", "source": "sohu"})
+            self._board_cache["constituents"][f"cn:concept:{board_name}"] = {
+                "items": [{"code": f"{300000 + idx * 100 + seq}", "name": f"概念股{idx}-{seq}"} for seq in range(20 - idx)],
+                "source": "sohu:test",
+            }
+        self._board_cache["catalogs"]["cn:industry"] = industry_rows
+        self._board_cache["catalogs"]["cn:concept"] = concept_rows
+
+        scopes = service.scope_catalog(MarketType.CN)
+
+        self.assertGreaterEqual(len(scopes), 16)
+        self.assertTrue(any(item.key.startswith("cn_auto_industry_") for item in scopes))
+        self.assertTrue(any(item.key.startswith("cn_auto_concept_") for item in scopes))
+        top_auto = next(item for item in scopes if item.key.startswith("cn_auto_industry_"))
+        self.assertGreaterEqual(top_auto.estimated_count or 0, 10)
+
+    def test_build_universe_supports_cn_auto_scope_key(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        self._board_cache["catalogs"]["cn:industry"] = [
+            {"board_name": "测试行业", "label": "测试行业", "description": "auto industry", "source": "sohu"},
+        ]
+        self._board_cache["constituents"]["cn:industry:测试行业"] = {
+            "items": [{"code": "600001", "name": "测试A"}, {"code": "600002", "name": "测试B"}],
+            "source": "sohu:test",
+        }
+
+        basics = service._build_custom_universe(["600001", "600002"], MarketType.CN)  # pylint: disable=protected-access
+        with patch.object(service, "_build_cn_board_universe", return_value=basics) as build_board:
+            result = service._build_universe(  # pylint: disable=protected-access
+                _request(market=MarketType.CN, scope="cn_auto_industry_1")
+            )
+
+        build_board.assert_called_once_with("industry", "测试行业", ["600001", "600002"])
+        self.assertEqual([item.code for item in result], ["600001", "600002"])
+
+    def test_build_universe_raises_when_scope_unknown(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        with self.assertRaisesRegex(ValueError, "unknown scope"):
+            service._build_universe(_request(market=MarketType.CN, scope="cn_scope_not_exists"))  # pylint: disable=protected-access
+
+    def test_build_universe_prefers_board_filters_over_cn_full_market_scope(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        basics = service._build_custom_universe(["600001", "600002"], MarketType.CN)  # pylint: disable=protected-access
+
+        with patch.object(service, "_build_board_universe", return_value=basics) as build_board:
+            with patch.object(service, "_list_a_share") as list_a_share:
+                result = service._build_universe(  # pylint: disable=protected-access
+                    _request(market=MarketType.CN, scope="all_market", board_filters=["半导体"])
+                )
+
+        self.assertEqual([item.code for item in result], ["600001", "600002"])
+        list_a_share.assert_not_called()
+        build_board.assert_called_once()
+        build_args = build_board.call_args[0]
+        self.assertEqual(build_args[0], MarketType.CN)
+        self.assertEqual(build_args[2], "半导体")
+
+    def test_scope_catalog_expands_overseas_scopes_to_at_least_twenty(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        hk_scopes = service.scope_catalog(MarketType.HK)
+        us_scopes = service.scope_catalog(MarketType.US)
+
+        self.assertGreaterEqual(len(hk_scopes), 20)
+        self.assertGreaterEqual(len(us_scopes), 20)
+
     def test_board_catalog_returns_cn_board_options(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
 
@@ -138,6 +260,21 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         self.assertEqual([item.board_name for item in boards], ["半导体", "白酒"])
         self.assertEqual(boards[0].estimated_count, 132)
 
+    def test_board_catalog_prefers_cached_constituent_count_for_estimated_count(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        self._board_cache["catalogs"]["cn:industry"] = [
+            {"board_name": "半导体", "label": "半导体", "estimated_count": 20},
+        ]
+        self._board_cache["constituents"]["cn:industry:半导体"] = {
+            "items": [{"code": "603986", "name": "兆易创新"}, {"code": "688981", "name": "中芯国际"}],
+            "source": "sohu:5558",
+        }
+
+        boards = service.board_catalog(MarketType.CN, ScreenerBoardType.INDUSTRY)
+
+        self.assertEqual(len(boards), 1)
+        self.assertEqual(boards[0].estimated_count, 2)
+
     def test_board_preview_uses_real_constituents(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
 
@@ -147,8 +284,21 @@ class StockScreenerServiceTestCase(unittest.TestCase):
             preview = service.board_preview(MarketType.CN, ScreenerBoardType.INDUSTRY, "半导体", limit=1)
 
         self.assertEqual(preview.board_name, "半导体")
-        self.assertEqual(preview.estimated_count, 2)
-        self.assertEqual(preview.preview_codes, ["603986"])
+        self.assertGreaterEqual(preview.estimated_count or 0, 2)
+        self.assertEqual(preview.preview_codes[:2], ["603986", "688981"])
+
+    def test_board_preview_returns_full_codes_when_limit_is_zero(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        basics = service._build_custom_universe(["603986", "688981", "002371"], MarketType.CN)  # pylint: disable=protected-access
+        self._board_cache["constituents"]["cn:industry:半导体"] = {
+            "items": [{"code": item.code, "name": item.name} for item in basics],
+            "source": "sohu:5558",
+        }
+
+        preview = service.board_preview(MarketType.CN, ScreenerBoardType.INDUSTRY, "半导体", limit=0)
+
+        self.assertEqual(preview.estimated_count, 3)
+        self.assertEqual(preview.preview_codes, ["603986", "688981", "002371"])
 
     def test_board_preview_falls_back_to_scope_codes_for_cn_board(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
@@ -159,7 +309,7 @@ class StockScreenerServiceTestCase(unittest.TestCase):
             preview = service.board_preview(MarketType.CN, ScreenerBoardType.INDUSTRY, "半导体", limit=2)
 
         self.assertEqual(preview.board_name, "半导体")
-        self.assertEqual(preview.preview_codes, ["603986", "688041"])
+        self.assertEqual(preview.preview_codes[:2], ["603986", "688041"])
         self.assertGreaterEqual(preview.estimated_count or 0, 10)
         self.assertIn("半导体", preview.description or "")
 
@@ -240,9 +390,77 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         ):
             with self.subTest(market=market.value, board_name=board_name):
                 payload = service.board_constituents(market, ScreenerBoardType.INDUSTRY, board_name)
-                self.assertEqual(payload.source, "config")
+                self.assertTrue(payload.source.startswith("config"))
                 self.assertGreaterEqual(payload.total, 5)
                 self.assertEqual(payload.items[0].code, first_code)
+
+    def test_load_cn_board_basics_enriches_small_live_result_with_sohu(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        live_basics = service._build_custom_universe(["603986", "688981"], MarketType.CN)  # pylint: disable=protected-access
+        sohu_basics = service._build_custom_universe(["603986", "688981", "002371", "300223"], MarketType.CN)  # pylint: disable=protected-access
+
+        with patch.object(service, "_fetch_cn_board_universe", return_value=(live_basics, "akshare")):
+            with patch.object(service, "_fetch_sohu_cn_board_universe", return_value=(sohu_basics, "sohu:5558")):
+                basics, source = service._load_cn_board_basics("industry", "半导体", [])
+
+        self.assertEqual([item.code for item in basics], ["603986", "688981", "002371", "300223"])
+        self.assertEqual(source, "sohu:5558+akshare")
+
+    def test_load_cn_board_basics_prefers_sohu_order_even_without_extra_symbols(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        live_basics = service._build_custom_universe(["603986", "688981", "002371"], MarketType.CN)  # pylint: disable=protected-access
+        sohu_basics = service._build_custom_universe(["002371", "603986", "688981"], MarketType.CN)  # pylint: disable=protected-access
+
+        with patch.object(service, "_fetch_cn_board_universe", return_value=(live_basics, "akshare")):
+            with patch.object(service, "_fetch_sohu_cn_board_universe", return_value=(sohu_basics, "sohu:5558")):
+                basics, source = service._load_cn_board_basics("industry", "半导体", [])
+
+        self.assertEqual([item.code for item in basics], ["002371", "603986", "688981"])
+        self.assertEqual(source, "sohu:5558+akshare")
+
+    def test_load_cn_board_basics_unions_multiple_sources(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        ak_basics = service._build_custom_universe(["603986", "688981"], MarketType.CN)  # pylint: disable=protected-access
+        ts_basics = service._build_custom_universe(["688981", "300223"], MarketType.CN)  # pylint: disable=protected-access
+        sohu_basics = service._build_custom_universe(["002371", "603986"], MarketType.CN)  # pylint: disable=protected-access
+
+        with patch.object(service, "_fetch_cn_board_universe", return_value=(ak_basics, "akshare")):
+            with patch.object(service, "_fetch_tushare_cn_board_universe", return_value=(ts_basics, "tushare")):
+                with patch.object(service, "_fetch_sohu_cn_board_universe", return_value=(sohu_basics, "sohu:5558")):
+                    basics, source = service._load_cn_board_basics("industry", "半导体", [])
+
+        self.assertEqual([item.code for item in basics], ["002371", "603986", "688981", "300223"])
+        self.assertEqual(source, "sohu:5558+akshare+tushare")
+
+    def test_load_cn_board_basics_uses_sohu_when_live_sources_fail(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        sohu_basics = service._build_custom_universe(["603986", "688981", "002371"], MarketType.CN)  # pylint: disable=protected-access
+
+        with patch.object(service, "_fetch_cn_board_universe", side_effect=RuntimeError("akshare unavailable")):
+            with patch.object(service, "_fetch_tushare_cn_board_universe", side_effect=RuntimeError("tushare unavailable")):
+                with patch.object(service, "_fetch_sohu_cn_board_universe", return_value=(sohu_basics, "sohu:5558")):
+                    basics, source = service._load_cn_board_basics("industry", "半导体", ["603986"])
+
+        self.assertEqual([item.code for item in basics], ["603986", "688981", "002371"])
+        self.assertEqual(source, "sohu:5558")
+
+    def test_fetch_overseas_market_symbols_uses_hk_spot_when_em_fails(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        fake_akshare = types.SimpleNamespace(
+            stock_hk_spot_em=lambda: (_ for _ in ()).throw(RuntimeError("em unavailable")),
+            stock_hk_spot=lambda: pd.DataFrame(
+                {
+                    "代码": ["00700", "09988", "00700"],
+                    "名称": ["腾讯控股", "阿里巴巴-W", "腾讯控股"],
+                }
+            ),
+        )
+
+        with patch.dict("sys.modules", {"akshare": fake_akshare}):
+            basics, source = service._fetch_overseas_market_symbols(MarketType.HK)  # pylint: disable=protected-access
+
+        self.assertEqual(source, "akshare_hk_spot")
+        self.assertEqual([item.code for item in basics[:2]], ["00700", "09988"])
 
     def test_build_universe_uses_scope_definition(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
@@ -269,7 +487,8 @@ class StockScreenerServiceTestCase(unittest.TestCase):
                 )
             )
 
-        self.assertEqual([item.code for item in result], ["603986", "688981"])
+        self.assertEqual([item.code for item in result[:2]], ["603986", "688981"])
+        self.assertGreaterEqual(len(result), 2)
 
     def test_board_catalog_returns_us_configured_boards(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
@@ -289,11 +508,20 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         preview = service.board_preview(MarketType.US, ScreenerBoardType.INDUSTRY, "半导体", limit=2)
 
         self.assertEqual(preview.board_name, "半导体")
-        self.assertEqual(preview.preview_codes, ["NVDA", "AMD"])
-        self.assertGreaterEqual(preview.estimated_count or 0, 10)
+        self.assertEqual(preview.preview_codes[:2], ["NVDA", "AMD"])
+        self.assertGreaterEqual(preview.estimated_count or 0, 20)
         self.assertIn("龙头", preview.tier_summary or "")
         self.assertGreaterEqual(len(preview.tiers), 3)
         self.assertIn("NVDA", preview.tiers[0].codes)
+
+    def test_board_preview_uses_hk_boosted_pool(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        preview = service.board_preview(MarketType.HK, ScreenerBoardType.INDUSTRY, "科技互联网", limit=3)
+
+        self.assertEqual(preview.board_name, "科技互联网")
+        self.assertEqual(preview.preview_codes[:2], ["00700", "09988"])
+        self.assertGreaterEqual(preview.estimated_count or 0, 20)
 
     def test_build_universe_uses_dynamic_us_board_scope(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
@@ -341,16 +569,17 @@ class StockScreenerServiceTestCase(unittest.TestCase):
                 "akshare_us_spot_em",
             ),
         ):
-            with patch.object(
-                service,
-                "_fetch_yfinance_profile",
-                side_effect=lambda market, basic: {
-                    "NVDA": {"code": "NVDA", "name": "NVIDIA", "sector": "Technology", "industry": "Semiconductors", "source": "yfinance"},
-                    "AMD": {"code": "AMD", "name": "AMD", "sector": "Technology", "industry": "Semiconductors", "source": "yfinance"},
-                    "JPM": {"code": "JPM", "name": "JPMorgan", "sector": "Financial Services", "industry": "Banks - Diversified", "source": "yfinance"},
-                }[basic.code],
-            ):
-                snapshots, source = service.build_overseas_market_board_snapshots(MarketType.US, cache=cache, profile_limit=3)
+            with patch.object(service, "_fetch_overseas_famous_symbols", return_value=([], "empty")):
+                with patch.object(
+                    service,
+                    "_fetch_yfinance_profile",
+                    side_effect=lambda market, basic: {
+                        "NVDA": {"code": "NVDA", "name": "NVIDIA", "sector": "Technology", "industry": "Semiconductors", "source": "yfinance"},
+                        "AMD": {"code": "AMD", "name": "AMD", "sector": "Technology", "industry": "Semiconductors", "source": "yfinance"},
+                        "JPM": {"code": "JPM", "name": "JPMorgan", "sector": "Financial Services", "industry": "Banks - Diversified", "source": "yfinance"},
+                    }[basic.code],
+                ):
+                    snapshots, source = service.build_overseas_market_board_snapshots(MarketType.US, cache=cache, profile_limit=3)
 
         self.assertEqual(source, "akshare_us_spot_em")
         semiconductor = snapshots["半导体"]
@@ -358,6 +587,28 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         self.assertIn("NVDA", [item["code"] for item in semiconductor["items"][:3]])
         self.assertIn("AMD", [item["code"] for item in semiconductor["items"][:3]])
         self.assertIn("profiles", cache)
+
+    def test_build_overseas_market_board_snapshots_uses_famous_pool_when_primary_unavailable(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        cache = {"version": 1, "updated_at": None, "catalogs": {}, "constituents": {}, "profiles": {}}
+        famous_basics = service._build_custom_universe(["NVDA", "AMD"], MarketType.US)  # pylint: disable=protected-access
+
+        with patch.object(service, "_fetch_overseas_market_symbols", side_effect=RuntimeError("primary unavailable")):
+            with patch.object(service, "_fetch_overseas_famous_symbols", return_value=(famous_basics, "akshare_us_famous_spot_em")):
+                with patch.object(
+                    service,
+                    "_fetch_yfinance_profile",
+                    side_effect=lambda market, basic: {
+                        "NVDA": {"code": "NVDA", "name": "NVIDIA", "sector": "Technology", "industry": "Semiconductors", "source": "yfinance"},
+                        "AMD": {"code": "AMD", "name": "AMD", "sector": "Technology", "industry": "Semiconductors", "source": "yfinance"},
+                    }[basic.code],
+                ):
+                    snapshots, source = service.build_overseas_market_board_snapshots(MarketType.US, cache=cache, profile_limit=2)
+
+        self.assertEqual(source, "akshare_us_famous_spot_em")
+        semiconductor = snapshots["半导体"]
+        self.assertTrue(semiconductor["source"].startswith("akshare_us_famous_spot_em+yfinance"))
+        self.assertIn("NVDA", [item["code"] for item in semiconductor["items"]])
 
     def test_scan_formula_mode_returns_result(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
@@ -374,6 +625,56 @@ class StockScreenerServiceTestCase(unittest.TestCase):
 
         self.assertEqual(result.total, 1)
         self.assertEqual(result.results[0].code, "AAPL")
+
+    def test_scan_reuses_history_source_hint(self) -> None:
+        manager = _HintAwareManager()
+        service = StockScreenerService(manager=manager)
+        service._max_workers = 1  # pylint: disable=protected-access
+
+        result = service.scan(
+            ScreenerScanRequest(
+                mode="formula",
+                formula="CLOSE > MA(CLOSE, 5)",
+                market="us",
+                codes=["AAPL", "MSFT"],
+                export_csv=False,
+            )
+        )
+
+        self.assertEqual(result.total, 2)
+        self.assertEqual(manager.preferred_fetchers[0], None)
+        self.assertEqual(manager.preferred_fetchers[1], "mock")
+
+    def test_scan_progress_callback_is_throttled(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        service._progress_update_step = 10  # pylint: disable=protected-access
+
+        progress_snapshots: list[int] = []
+        result = service.scan(
+            ScreenerScanRequest(
+                mode="formula",
+                formula="CLOSE > MA(CLOSE, 5)",
+                market="us",
+                codes=[
+                    "AAPL", "MSFT", "NVDA", "AMD", "TSLA", "META", "AMZN", "GOOGL", "NFLX", "INTC", "CSCO",
+                    "ORCL", "IBM", "QCOM", "AVGO", "MU", "ADBE", "CRM", "UBER", "PYPL", "SHOP", "SNOW", "PLTR",
+                ],
+                export_csv=False,
+            ),
+            progress_callback=lambda scanned, total, matched, message: progress_snapshots.append(scanned),
+        )
+
+        self.assertEqual(result.total, 23)
+        self.assertIn(23, progress_snapshots)
+        self.assertLess(len(progress_snapshots), 12)
+
+    def test_resolve_scan_workers_respects_limits(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        service._max_workers = 16  # pylint: disable=protected-access
+
+        self.assertEqual(service._resolve_scan_workers(0), 1)   # pylint: disable=protected-access
+        self.assertEqual(service._resolve_scan_workers(3), 3)   # pylint: disable=protected-access
+        self.assertEqual(service._resolve_scan_workers(100), 16)  # pylint: disable=protected-access
 
 
 if __name__ == "__main__":

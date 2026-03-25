@@ -69,3 +69,23 @@ RSI(CLOSE,14) < 30 AND CLOSE > REF(CLOSE,1)
 ```txt
 EVERY(CLOSE > MA(CLOSE,20), 5) AND MACD(CLOSE,12,26,9).hist > 0
 ```
+
+## Preset template notes
+
+- Web 公式编辑器已内置 20+ 模板（当前 26 个），按四类组织：
+  - 趋势跟随（MA/EMA/MACD/ROC）
+  - 突破动量（HHV/Donchian/BOLL）
+  - 均值回归（RSI/CCI/WR/MFI/KDJ）
+  - 量价共振（VOL/OBV/ATR）
+- “高胜率倾向”表示公开研究或公开回测中更常见的稳健规则组合，不代表未来收益保证；建议先做本地回测和参数微调。
+
+## Public research and backtest references
+
+- Meb Faber, *A Quantitative Approach to Tactical Asset Allocation* (10-month MA trend filter): [SSRN](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=962461)
+- Brock, Lakonishok, LeBaron (1992), moving-average / breakout rule evidence: [Santa Fe Institute working paper page](https://www.santafe.edu/research/results/working-papers/simple-technical-trading-rules-and-the-stochastic)
+- Moskowitz, Ooi, Pedersen (2012), time-series momentum: [Elsevier / JFE page](https://www.sciencedirect.com/science/article/abs/pii/S0304405X11002613)
+- Jegadeesh & Titman (1993), medium-term momentum: [EconPapers](https://econpapers.repec.org/article/blajfinan/v_3a48_3ay_3a1993_3ai_3a1_3ap_3a65-91.htm)
+- George & Hwang (2004), 52-week high effect: [Elsevier / JFE page](https://www.sciencedirect.com/science/article/abs/pii/S0304405X03002022)
+- StockCharts, Connors RSI(2) strategy overview: [StockCharts article](https://chartschool.stockcharts.com/table-of-contents/trading-strategies-and-models/trading-strategies/rsi-2)
+- QuantifiedStrategies, RSI(2) backtest examples: [RSI 2 strategy](https://www.quantifiedstrategies.com/rsi-2-trading-strategy/)
+- QuantifiedStrategies, Bollinger / MACD strategy backtests: [Bollinger](https://www.quantifiedstrategies.com/bollinger-bands-trading-strategy/) · [MACD](https://www.quantifiedstrategies.com/macd-trading-strategy/)

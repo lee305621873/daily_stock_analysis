@@ -33,7 +33,7 @@ demo
 | AI | 决策仪表盘 | 一句话核心结论 + 精确买卖点位 + 操作检查清单 |
 | 分析 | 多维度分析 | 技术面（盘中实时 MA/多头排列）+ 筹码分布 + 舆情情报 + 实时行情 |
 | 市场 | 全球市场 | 支持 A股、港股、美股及美股指数（SPX、DJI、IXIC 等） |
-| 选股 | 技术指标扫描 | Web 主站新增 `选股` Tab，默认进入公式选股；支持 A 股/港股/美股条件选股与公式选股，扫描范围由后端统一维护；A 股除预置板块外还支持从真实行业/概念板块目录选择具体板块并预览真实成分股，A 股预置板块快捷入口也会尝试加载真实板块预览；A 股板块成分股优先走 AkShare，失败后再尝试 Tushare（如已配置 `TUSHARE_TOKEN`），最后才回退到维护清单；后端新增完整板块成分股接口，便于脚本和后续页面复用；港股/美股新增后端维护的行业板块池，并按“龙头 / 中军 / 弹性”分层维护；当前已补充半导体、科技、消费、金融、公用事业、REITs、航空航天军工等可配置板块，前端选中后会直接展示分层明细，且扫描范围元数据会优先走本地配置预览以避免页面回退成仅显示全市场；后续可继续替换为更真实的数据源；支持扫描上限与指标提示；A 股全市场扫描会自动转后台任务并通过 SSE 实时刷新进度 |
+| 选股 | 技术指标扫描 | Web 主站新增 `选股` Tab，默认进入公式选股；支持 A 股/港股/美股条件选股与公式选股，扫描范围由后端统一维护；A 股除预置板块外还支持从真实行业/概念板块目录选择具体板块并预览真实成分股，A 股预置板块快捷入口也会尝试加载真实板块预览；A 股板块成分股链路已升级为 `AkShare -> Tushare -> 搜狐板块页 -> 本地维护清单`（会在数量偏少时尝试自动补全），且展示顺序默认以 Sohu 实时抓取顺序为准；后端新增完整板块成分股接口，便于脚本和后续页面复用；港股/美股新增后端维护的行业板块池，并按“龙头 / 中军 / 弹性”分层维护，且港股全市场列表新增 `AkShare stock_hk_spot` 兜底以提升动态板块可用性；当前已补充半导体、科技、消费、金融、公用事业、REITs、航空航天军工等可配置板块，前端选中后会直接展示分层明细，且扫描范围元数据会优先走本地配置预览以避免页面回退成仅显示全市场；后续可继续替换为更真实的数据源；支持扫描上限与指标提示；A 股全市场扫描会自动转后台任务并通过 SSE 实时刷新进度 |
 
 > 选股页的指标元数据、公式函数列表与公式校验现已和行情数据源初始化解耦；即使本地尚未装全 AkShare / Tushare / YFinance 等行情依赖，页面也能先加载基础配置并完成公式校验。实际执行扫描时仍需对应的数据源环境可用。
 | 基本面 | 结构化聚合 | 新增 `fundamental_context`（valuation/growth/earnings/institution/capital_flow/dragon_tiger/boards，其中 `boards` 表示板块涨跌榜），主链路 fail-open 降级 |
@@ -50,9 +50,25 @@ demo
 
 > 技术公式语法、函数清单与准确性口径文档见 `docs/stock-formula-spec.md`、`docs/stock-formula-functions.md`、`docs/stock-formula-accuracy.md`。
 
-> 选股板块支持本地持久化缓存。可使用 `python scripts/refresh_screener_board_cache.py --markets cn,hk,us` 预生成板块目录与成分股缓存；运行后 Web/API 会优先读取 `data/stock_screener/board_cache.json`，避免每次页面打开都实时请求外部接口。A 股缓存链路为 `AkShare -> Tushare -> 本地维护清单`；港股/美股缓存链路会优先尝试 `AkShare 全市场列表 + YFinance 行业画像` 自动扩充板块成分股，失败时再回退到仓库内置种子池。若要批量缓存全部 A 股动态行业/概念板块，可额外加 `--cn-all-dynamic`（耗时较长，建议按需执行）；若只想快速落盘内置港美股种子池，可加 `--skip-overseas-live`。
+> 选股页公式编辑器已内置 `26` 个公式模板（趋势跟随 / 动量突破 / 均值回归 / 量价共振四类），并优先采用公开研究与公开回测中相对稳健、胜率倾向较高的规则组合作为默认示例；仍建议结合你的市场与持有周期做本地回测后再实盘使用。
 
-> 如需直接导出板块代码，可运行 `python scripts/export_board_codes.py --market cn --board-type industry --board-name 半导体`；半导体也保留了快捷脚本 `python scripts/export_semiconductor_codes.py`。脚本与 API 现在共用同一条 A 股板块链路：`AkShare -> Tushare -> 仓库维护清单`。
+> 选股板块支持本地持久化缓存。可使用 `python scripts/refresh_screener_board_cache.py --markets cn,hk,us` 预生成板块目录与成分股缓存；运行后 Web/API 会优先读取 `data/stock_screener/board_cache.json`，避免每次页面打开都实时请求外部接口。A 股缓存链路为 `AkShare -> Tushare -> 搜狐板块页 -> 本地维护清单`；港股/美股缓存链路会优先尝试 `AkShare 全市场列表 + 东方财富知名港美股池 + YFinance 行业画像` 自动扩充板块成分股，其中港股全市场代码获取新增 `stock_hk_spot` 兜底，失败时再回退到仓库内置种子池。默认会额外预热每个 A 股板块类型（行业/概念）前 12 个板块到缓存，以便扫描范围自动扩展到 15+；若要批量缓存全部 A 股动态行业/概念板块，可额外加 `--cn-all-dynamic`（耗时较长，建议按需执行），也可通过 `--cn-seed-per-type` 调整默认预热数量；若只想快速落盘内置港美股种子池，可加 `--skip-overseas-live`。
+
+> 如需直接导出板块代码，可运行 `python scripts/export_board_codes.py --market cn --board-type industry --board-name 半导体`；半导体也保留了快捷脚本 `python scripts/export_semiconductor_codes.py`。脚本与 API 现在共用同一条 A 股板块链路：`AkShare -> Tushare -> 搜狐板块页 -> 仓库维护清单`。
+
+> A 股板块成分股会按“多源并集”方式聚合（Sohu/AkShare/Tushare/本地维护清单），展示顺序以 Sohu 实时顺序优先；`board_catalog` 的 `estimated_count` 也会优先取已缓存成分股数量，并在日志中输出各来源命中数量，便于排查“半导体不是 418”这类数量异常。
+
+> `GET /api/v1/stocks/screener/boards/preview` 现支持全量预览：`limit<=0` 时返回板块全部成分股代码；Web 默认按全量预览显示（不再固定 20 条）。
+
+> 选股请求若传入 `board_filters`（如 `半导体`），后端会优先构建板块并集股票池再执行扫描，不再先跑全 A 股再做结果后过滤；日志会额外输出 `universe prepared`，可直接核对本次扫描来源与股票池数量。
+
+> A 股自定义股票池代码输入支持粘连容错：如 `002218.300528`、`002218,300528`、`002218300528` 会自动拆分为 `002218` 与 `300528`，降低因分隔符格式差异导致的 `invalid cn codes` 报错。
+
+> 若历史环境中出现过 `libmini_racer` 的 `FATAL:address_pool_manager.cc(67)` 崩溃，当前版本已对 `AkShare` 日线抓取增加线程安全保护；建议重启后端服务后再进行大范围并发选股。
+
+> 如需提升技术指标选股吞吐，可在 `.env` 调整 `STOCK_SCREENER_MAX_WORKERS`（默认 `16`，最大按服务侧上限 `32`）与 `STOCK_SCREENER_PROGRESS_UPDATE_STEP`（默认 `5`）。服务会输出扫描耗时与 `stocks/min` 日志，便于验证“1 分钟 50 只”目标。
+
+> 选股扫描请求在“未显式传入股票代码（codes）”时会默认走后台任务（返回任务 ID + SSE 进度），用于规避大范围扫描时的前端请求超时；仅小规模自定义代码池默认保持同步返回。
 
 > Web 管理认证支持运行时开关；如果系统中已保留管理员密码，重新开启认证时必须提供当前密码，避免在认证关闭窗口内直接获取新的管理员会话。
 > 多进程/多 worker 部署时，认证开关仅在当前进程即时生效；需重启或滚动重启全部 worker 以统一状态。

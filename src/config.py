@@ -457,6 +457,8 @@ class Config:
     
     # === 系统配置 ===
     max_workers: int = 3  # 低并发防封禁
+    stock_screener_max_workers: int = 16  # 选股扫描专用并发，默认提高吞吐
+    stock_screener_progress_update_step: int = 5  # 选股进度更新步长（每 N 只更新一次）
     debug: bool = False
     http_proxy: Optional[str] = None  # HTTP 代理 (例如: http://127.0.0.1:10809)
     https_proxy: Optional[str] = None # HTTPS 代理
@@ -967,6 +969,8 @@ class Config:
             log_dir=os.getenv('LOG_DIR', './logs'),
             log_level=os.getenv('LOG_LEVEL', 'INFO'),
             max_workers=int(os.getenv('MAX_WORKERS', '3')),
+            stock_screener_max_workers=max(1, int(os.getenv('STOCK_SCREENER_MAX_WORKERS', '16'))),
+            stock_screener_progress_update_step=max(1, int(os.getenv('STOCK_SCREENER_PROGRESS_UPDATE_STEP', '5'))),
             debug=os.getenv('DEBUG', 'false').lower() == 'true',
             config_validate_mode=os.getenv('CONFIG_VALIDATE_MODE', 'warn').lower(),
             http_proxy=os.getenv('HTTP_PROXY'),
@@ -1698,6 +1702,8 @@ if __name__ == "__main__":
     print(f"自选股列表: {config.stock_list}")
     print(f"数据库路径: {config.database_path}")
     print(f"最大并发数: {config.max_workers}")
+    print(f"选股扫描并发数: {config.stock_screener_max_workers}")
+    print(f"选股进度更新步长: {config.stock_screener_progress_update_step}")
     print(f"调试模式: {config.debug}")
     
     # 验证配置

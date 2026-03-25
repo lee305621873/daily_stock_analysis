@@ -99,7 +99,7 @@ def preview_board_constituents(
     market: MarketType,
     board_type: ScreenerBoardType,
     board_name: str,
-    limit: int = 20,
+    limit: int = 0,
 ):
     try:
         service = StockScreenerService()
@@ -230,7 +230,13 @@ def validate_formula(body: FormulaValidationRequest):
 )
 def run_screener_scan(body: ScreenerScanRequest):
     try:
-        should_run_async = body.async_mode or (body.market == MarketType.CN and not body.codes)
+        # Scope-based scans (without explicit code list) can be large and may exceed
+        # synchronous HTTP timeout budgets; default those requests to background tasks.
+        scope_key = str((body.scope or "")).strip().lower()
+        has_scope_universe = bool(scope_key and scope_key != "custom_pool") or bool((body.board_name or "").strip())
+        should_run_async = body.async_mode or (
+            not body.codes and (body.market == MarketType.CN or has_scope_universe)
+        )
         if should_run_async:
             task = get_stock_screener_task_queue().submit_task(body.model_copy(update={"async_mode": True}))
             return JSONResponse(status_code=202, content=task.model_dump())

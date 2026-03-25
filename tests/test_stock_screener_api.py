@@ -331,6 +331,34 @@ class StockScreenerApiTestCase(unittest.TestCase):
         self.assertEqual(response.json()["task_id"], "task-001")
         queue_factory.return_value.submit_task.assert_called_once()
 
+    def test_scan_endpoint_scope_without_codes_defaults_to_async_task(self) -> None:
+        accepted = ScreenerTaskAccepted(task_id="task-002", message="选股任务已提交")
+
+        with patch("api.v1.endpoints.stock_screener.get_stock_screener_task_queue") as queue_factory:
+            queue_factory.return_value.submit_task.return_value = accepted
+
+            response = self.client.post(
+                "/api/v1/stocks/screener/scan",
+                json={
+                    "market": "us",
+                    "scope": "us_semiconductor",
+                    "conditions": [
+                        {
+                            "indicator": "RSI",
+                            "params": {"period": 14},
+                            "output": "rsi",
+                            "operator": "<",
+                            "compare_to": {"type": "value", "value": 30},
+                            "logic_with_previous": "AND",
+                        }
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["task_id"], "task-002")
+        queue_factory.return_value.submit_task.assert_called_once()
+
     def test_get_task_status_endpoint(self) -> None:
         task_payload = {
             "task_id": "task-001",

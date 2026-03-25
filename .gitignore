@@ -48,6 +48,9 @@ env/
 
 # 数据和日志
 /data/
+!/data/
+!/data/stock_screener/
+!/data/stock_screener/board_cache.json
 logs/
 reports/
 *.db

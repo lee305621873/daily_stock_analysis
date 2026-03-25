@@ -35,10 +35,32 @@ const FALLBACK_INDICATORS: IndicatorMeta[] = [
 ];
 
 const FORMULA_TEMPLATES = [
-  { label: '均线金叉', value: 'CROSS(MA(CLOSE,5), MA(CLOSE,20))' },
+  { label: '均线金叉（5/20）', value: 'CROSS(MA(CLOSE,5), MA(CLOSE,20))' },
+  { label: '中期趋势金叉（20/60）', value: 'CROSS(MA(CLOSE,20), MA(CLOSE,60))' },
+  { label: 'EMA 动量金叉（12/26）', value: 'CROSS(EMA(CLOSE,12), EMA(CLOSE,26))' },
+  { label: '多头排列启动', value: 'MA(CLOSE,20) > MA(CLOSE,60) AND MA(CLOSE,60) > MA(CLOSE,120) AND CLOSE > MA(CLOSE,20)' },
+  { label: '回踩 20 日线再走强', value: 'MA(CLOSE,20) > MA(CLOSE,60) AND CLOSE > MA(CLOSE,20) AND REF(CLOSE,1) <= REF(MA(CLOSE,20),1)' },
+  { label: 'MACD 零轴上方转强', value: 'MACD(CLOSE,12,26,9).macd > 0 AND CROSS(MACD(CLOSE,12,26,9).hist, 0)' },
+  { label: 'MACD 柱体连续走强', value: 'EVERY(MACD(CLOSE,12,26,9).hist > REF(MACD(CLOSE,12,26,9).hist,1), 3) AND MACD(CLOSE,12,26,9).hist > 0' },
+  { label: '12 月动量为正', value: 'ROC(CLOSE,252) > 0 AND CLOSE > MA(CLOSE,120)' },
+  { label: '双周期动量确认（63/126）', value: 'ROC(CLOSE,63) > 0 AND ROC(CLOSE,126) > 0 AND CLOSE > MA(CLOSE,60)' },
+  { label: '52 周新高突破', value: 'CLOSE >= HHV(HIGH,252) * 0.995 AND VOL > MA(VOL,20)' },
   { label: '放量突破 20 日新高', value: 'CLOSE > HHV(HIGH,20) AND VOL > 2 * MA(VOL,5)' },
-  { label: '超跌反弹', value: 'RSI(CLOSE,14) < 30 AND CLOSE > REF(CLOSE,1)' },
-  { label: '趋势延续', value: 'EVERY(CLOSE > MA(CLOSE,20), 5) AND MACD(CLOSE,12,26,9).hist > 0' },
+  { label: '55 日唐奇安突破', value: 'CLOSE > HHV(HIGH,55) AND ATR(HIGH,LOW,CLOSE,14) > MA(ATR(HIGH,LOW,CLOSE,14),20)' },
+  { label: '布林上轨突破 + 带宽放大', value: 'CLOSE > BOLL(CLOSE,20,2).upper AND BOLL(CLOSE,20,2).bandwidth > REF(BOLL(CLOSE,20,2).bandwidth,1)' },
+  { label: '布林挤压后突破', value: 'BOLL(CLOSE,20,2).bandwidth < LLV(BOLL(CLOSE,20,2).bandwidth,60) * 1.2 AND CLOSE > BOLL(CLOSE,20,2).upper' },
+  { label: 'RSI(2) 超卖反弹（强均值回归）', value: 'RSI(CLOSE,2) < 10 AND CLOSE > MA(CLOSE,200)' },
+  { label: 'RSI(14) 超卖拐头', value: 'RSI(CLOSE,14) < 30 AND CLOSE > REF(CLOSE,1)' },
+  { label: 'CCI 超卖反弹', value: 'CCI(HIGH,LOW,CLOSE,20) < -100 AND CLOSE > REF(CLOSE,1)' },
+  { label: 'WR 超卖反弹', value: 'WR(HIGH,LOW,CLOSE,14) > 80 AND CLOSE > REF(CLOSE,1)' },
+  { label: 'MFI 超卖反弹', value: 'MFI(HIGH,LOW,CLOSE,VOL,14) < 20 AND CLOSE > REF(CLOSE,1)' },
+  { label: 'KDJ 超卖金叉', value: 'KDJ(HIGH,LOW,CLOSE,9,3,3).j < 20 AND CROSS(KDJ(HIGH,LOW,CLOSE,9,3,3).k, KDJ(HIGH,LOW,CLOSE,9,3,3).d)' },
+  { label: '下轨均值回归', value: 'CLOSE < BOLL(CLOSE,20,2).lower AND RSI(CLOSE,6) < 25' },
+  { label: 'OBV 资金确认突破', value: 'CLOSE > MA(CLOSE,20) AND OBV(CLOSE,VOL) > MA(OBV(CLOSE,VOL),20)' },
+  { label: '缩量蓄势后突破', value: 'COUNT(VOL < MA(VOL,20), 10) >= 7 AND CLOSE > HHV(HIGH,10)' },
+  { label: 'ATR 收缩后放量启动', value: 'ATR(HIGH,LOW,CLOSE,14) < MA(ATR(HIGH,LOW,CLOSE,14),20) AND VOL > 1.5 * MA(VOL,20) AND CLOSE > MA(CLOSE,20)' },
+  { label: '金叉后二次确认', value: 'EXIST(CROSS(MA(CLOSE,5), MA(CLOSE,20)), 5) AND CLOSE > MA(CLOSE,20)' },
+  { label: '短线超跌反转（3 日 RSI）', value: 'CLOSE < LLV(LOW,5) * 1.02 AND RSI(CLOSE,3) < 15 AND CLOSE > REF(CLOSE,1)' },
 ];
 
 function createDefaultCondition(indicator: IndicatorKey): ScreenerCondition {
@@ -237,6 +259,11 @@ function buildFallbackScopes(market: MarketType): ScreenerScopeOption[] {
   return [{ key: 'custom_pool', market, label: '自定义股票池', description: MARKET_HINTS[market], kind: 'custom_pool', estimatedCount: null, previewCodes: [] }];
 }
 
+function pickPreferredScopeKey(scopes: ScreenerScopeOption[]): string {
+  const customPool = scopes.find((item) => item.key === 'custom_pool');
+  return customPool?.key || scopes[0]?.key || 'custom_pool';
+}
+
 function getMarketLabel(market: MarketType): string {
   if (market === 'cn') return 'A股';
   if (market === 'hk') return '港股';
@@ -271,7 +298,7 @@ const StockScreenerPage: React.FC = () => {
   const [formulaValidation, setFormulaValidation] = useState<FormulaValidationResponse | null>(null);
   const [formulaValidationError, setFormulaValidationError] = useState<ParsedApiError | null>(null);
   const [market, setMarket] = useState<MarketType>('cn');
-  const [scanScope, setScanScope] = useState('all_market');
+  const [scanScope, setScanScope] = useState('custom_pool');
   const [selectedBoardName, setSelectedBoardName] = useState('');
   const [boardSearchText, setBoardSearchText] = useState('');
   const [boardPreview, setBoardPreview] = useState<ScreenerBoardPreview | null>(null);
@@ -326,7 +353,7 @@ const StockScreenerPage: React.FC = () => {
     const availableScopes = scopeCatalog[market] || [];
     if (!availableScopes.length) return;
     if (!availableScopes.some((item) => item.key === scanScope)) {
-      setScanScope(availableScopes[0].key);
+      setScanScope(pickPreferredScopeKey(availableScopes));
     }
   }, [market, scanScope, scopeCatalog]);
 
@@ -480,6 +507,14 @@ const StockScreenerPage: React.FC = () => {
 
   const handleScan = async () => {
     const trimmedFormula = formulaText.trim();
+    if (activeTaskId && taskInfo && (taskInfo.status === 'pending' || taskInfo.status === 'processing')) {
+      setPageError(createParsedApiError({
+        title: '后台任务进行中',
+        message: '当前已有后台选股任务在执行，请等待完成后再发起新的扫描。',
+        category: 'http_error',
+      }));
+      return;
+    }
 
     if (scanMode === 'formula' && !trimmedFormula) {
       const error = createParsedApiError({
@@ -508,7 +543,14 @@ const StockScreenerPage: React.FC = () => {
       return;
     }
 
-    if (isDynamicBoardScope && !selectedBoardName.trim()) {
+    const effectiveBoardName = isDynamicBoardScope
+      ? selectedBoardName.trim()
+      : (isPresetBoardScope ? (activeScope?.boardName || '').trim() : '');
+    const effectiveBoardType = isDynamicBoardScope || isPresetBoardScope
+      ? activeBoardType || undefined
+      : undefined;
+
+    if (isDynamicBoardScope && !effectiveBoardName) {
       setPageError(createParsedApiError({
         title: '板块未选择',
         message: `当前扫描范围需要先选择一个${getMarketLabel(market)}板块，才能开始扫描。`,
@@ -533,8 +575,8 @@ const StockScreenerPage: React.FC = () => {
         formulaName: scanMode === 'formula' ? formulaName.trim() || undefined : undefined,
         market,
         scope: activeScope?.key,
-        boardName: isDynamicBoardScope ? selectedBoardName.trim() : undefined,
-        boardType: isDynamicBoardScope ? activeBoardType || undefined : undefined,
+        boardName: effectiveBoardName || undefined,
+        boardType: effectiveBoardType,
         volumeHeatRatio: heat ? Number(heat) : undefined,
         exportCsv: true,
         sortBy,
@@ -563,6 +605,7 @@ const StockScreenerPage: React.FC = () => {
           result: null,
         });
         setActiveTaskId(response.taskId);
+        setIsLoading(false);
         return;
       }
 
@@ -612,7 +655,7 @@ const StockScreenerPage: React.FC = () => {
     ? (boardPreview?.previewCodes ?? activeScope?.previewCodes ?? [])
     : (activeScope?.previewCodes ?? []);
   const effectiveCodes = isCustomPool ? parseCodes(codesText) : [];
-  const shouldRunAsync = market === 'cn' && activeScope?.kind === 'full_market';
+  const shouldRunAsync = effectiveCodes.length === 0 || effectiveCodes.length > 50;
   const effectiveEstimatedCount = isDynamicBoardScope || isPresetBoardScope
     ? (boardPreview?.estimatedCount ?? selectedBoardOption?.estimatedCount ?? null)
     : (activeScope?.estimatedCount ?? null);
@@ -676,7 +719,7 @@ const StockScreenerPage: React.FC = () => {
     let cancelled = false;
     const loadBoardPreview = async () => {
       try {
-        const preview = await screenerApi.getBoardPreview(market, previewBoardType, previewBoardName, 20);
+        const preview = await screenerApi.getBoardPreview(market, previewBoardType, previewBoardName, 0);
         if (!cancelled) {
           setBoardPreview(preview);
         }
@@ -766,7 +809,7 @@ const StockScreenerPage: React.FC = () => {
             onChange={(next) => {
               const nextMarket = next as MarketType;
               setMarket(nextMarket);
-              setScanScope((scopeCatalog[nextMarket] || buildFallbackScopes(nextMarket))[0]?.key || 'custom_pool');
+              setScanScope(pickPreferredScopeKey(scopeCatalog[nextMarket] || buildFallbackScopes(nextMarket)));
               setPageError(null);
             }}
             options={[
@@ -802,7 +845,7 @@ const StockScreenerPage: React.FC = () => {
           <div className="flex flex-col">
             <label htmlFor="screener-codes" className="mb-2 inline-flex items-center gap-2 text-sm font-medium text-foreground">
               <span>{isCustomPool ? '自定义股票池' : '范围预览'}</span>
-              <HelpHint content={isCustomPool ? '支持逗号、空格、换行分隔股票代码。' : '这里只展示后端返回的前若干只预览代码；动态板块范围会按完整股票池扫描。'} />
+              <HelpHint content={isCustomPool ? '支持逗号、空格、换行分隔股票代码。' : '这里展示后端返回的完整范围代码（板块范围可能较长）。'} />
             </label>
             <textarea
               id="screener-codes"
@@ -828,7 +871,7 @@ const StockScreenerPage: React.FC = () => {
                     ? `预计 ${effectiveEstimatedCount} 只成分股`
                     : `预览 ${previewCodes.length} 只股票`}
               </Badge>
-              {shouldRunAsync ? <Badge variant="warning">A 股全市场会自动后台扫描</Badge> : null}
+              {shouldRunAsync ? <Badge variant="warning">当前范围会自动后台扫描</Badge> : null}
               {isDynamicBoardScope || isPresetBoardScope ? <Badge variant="info">{market === 'cn' ? '真实板块成分股' : '行业代表池'}</Badge> : null}
               {isDynamicBoardScope && dynamicBoardTierSummary ? <Badge variant="warning">{dynamicBoardTierSummary}</Badge> : null}
             </div>
@@ -909,7 +952,7 @@ const StockScreenerPage: React.FC = () => {
             value={scanLimit}
             onChange={(event) => setScanLimit(event.target.value)}
             placeholder={shouldRunAsync ? '如 300' : '可选'}
-            hint={shouldRunAsync ? 'A 股全市场建议设置一个上限，减少后台扫描耗时。' : '留空表示按当前范围全部扫描。'}
+            hint={shouldRunAsync ? '后台扫描建议设置一个上限，减少任务耗时。' : '留空表示按当前范围全部扫描。'}
           />
           <Select
             label="排序字段"

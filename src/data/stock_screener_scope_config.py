@@ -20,14 +20,14 @@ STOCK_SCREENER_SCOPE_CONFIG: Dict[str, List[ScopeConfig]] = {
         },
         {
             "key": "cn_board_industry_dynamic",
-            "label": "A 股行业板块（自选）",
+            "label": "A 股行业板块（自定义）",
             "description": "从真实 A 股行业板块目录中选择一个行业，并按该行业完整成分股扫描。",
             "kind": "board_dynamic",
             "board_type": "industry",
         },
         {
             "key": "cn_board_concept_dynamic",
-            "label": "A 股概念板块（自选）",
+            "label": "A 股概念板块（自定义）",
             "description": "从真实 A 股概念板块目录中选择一个概念，并按该概念完整成分股扫描。",
             "kind": "board_dynamic",
             "board_type": "concept",
@@ -94,7 +94,7 @@ STOCK_SCREENER_SCOPE_CONFIG: Dict[str, List[ScopeConfig]] = {
     "hk": [
         {
             "key": "hk_board_industry_dynamic",
-            "label": "港股行业板块（自选）",
+            "label": "港股行业板块（自定义）",
             "description": "从后端维护的港股行业池中选择一个行业，并按该行业代表成分股扫描。",
             "kind": "board_dynamic",
             "board_type": "industry",
@@ -139,7 +139,7 @@ STOCK_SCREENER_SCOPE_CONFIG: Dict[str, List[ScopeConfig]] = {
     "us": [
         {
             "key": "us_board_industry_dynamic",
-            "label": "美股行业板块（自选）",
+            "label": "美股行业板块（自定义）",
             "description": "从后端维护的美股行业池中选择一个行业，并按该行业代表成分股扫描。",
             "kind": "board_dynamic",
             "board_type": "industry",
