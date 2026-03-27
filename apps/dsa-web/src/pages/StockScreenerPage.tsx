@@ -390,6 +390,8 @@ const StockScreenerPage: React.FC = () => {
   const [streamConnected, setStreamConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isValidatingFormula, setIsValidatingFormula] = useState(false);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
+  const [isExportingXlsx, setIsExportingXlsx] = useState(false);
   const [pageError, setPageError] = useState<ParsedApiError | null>(null);
   const [metadataWarning, setMetadataWarning] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -673,15 +675,45 @@ const StockScreenerPage: React.FC = () => {
     }
   };
 
-  const handleDownloadCsv = () => {
-    if (!results?.csv) return;
-    const blob = new Blob([results.csv], { type: 'text/csv;charset=utf-8' });
+  const triggerDownload = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `stock-screener-${market}.csv`;
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleExport = async (format: 'csv' | 'xlsx') => {
+    const activeTaskIdForExport = taskInfo?.status === 'completed' ? taskInfo.taskId : null;
+    const hasVisibleRows = Boolean(results?.results?.length);
+    if (!activeTaskIdForExport && !hasVisibleRows) {
+      return;
+    }
+
+    const setLoading = format === 'csv' ? setIsExportingCsv : setIsExportingXlsx;
+    setLoading(true);
+    try {
+      let blob: Blob;
+      if (activeTaskIdForExport) {
+        blob = await screenerApi.exportTaskResults(activeTaskIdForExport, format, 'all');
+      } else if (format === 'csv' && results?.csv) {
+        blob = new Blob([results.csv], { type: 'text/csv;charset=utf-8' });
+      } else {
+        blob = await screenerApi.exportRows(
+          results?.results || [],
+          format,
+          `stock-screener-${market}-visible`,
+        );
+      }
+      const suffix = format === 'csv' ? 'csv' : 'xlsx';
+      const taskToken = activeTaskIdForExport ? `-${activeTaskIdForExport.slice(0, 8)}` : '';
+      triggerDownload(blob, `stock-screener-${market}${taskToken}.${suffix}`);
+    } catch (error) {
+      setPageError(getParsedApiError(error));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleScan = async () => {
@@ -1410,8 +1442,25 @@ const StockScreenerPage: React.FC = () => {
         <Button type="button" onClick={handleScan} isLoading={isLoading} loadingText="扫描中..." glow>
           开始选股
         </Button>
-        <Button type="button" variant="outline" onClick={handleDownloadCsv} disabled={!results?.csv}>
-          下载 CSV
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void handleExport('xlsx')}
+          disabled={!(results?.results?.length || taskInfo?.status === 'completed')}
+          isLoading={isExportingXlsx}
+          loadingText="导出中..."
+        >
+          导出 Excel
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void handleExport('csv')}
+          disabled={!(results?.results?.length || taskInfo?.status === 'completed')}
+          isLoading={isExportingCsv}
+          loadingText="导出中..."
+        >
+          导出 CSV
         </Button>
       </StickyActionBar>
 

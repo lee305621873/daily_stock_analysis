@@ -19,7 +19,8 @@ from api.v1.schemas.stocks import (
     Operator,
     ScreenerScanRequest,
 )
-from src.services.stock_screener_service import StockScreenerService
+import src.services.stock_screener_service as screener_service_module
+from src.services.stock_screener_service import StockBasic, StockScreenerService
 
 
 class _FakeManager:
@@ -107,6 +108,77 @@ class StockScreenerServiceTestCase(unittest.TestCase):
     def tearDown(self) -> None:
         self._save_cache_patcher.stop()
         self._load_cache_patcher.stop()
+
+    def test_call_akshare_with_resilience_retries_transient_error(self) -> None:
+        screener_service_module._AKSHARE_SOURCE_CIRCUIT.clear()
+        attempts = {"count": 0}
+
+        def flaky_call():
+            attempts["count"] += 1
+            if attempts["count"] < 3:
+                raise ConnectionError("Remote end closed connection without response")
+            return "ok"
+
+        with patch("src.services.stock_screener_service.time.sleep", return_value=None):
+            result = screener_service_module._call_akshare_with_resilience(
+                "akshare_test_retry",
+                "AkShare retry test",
+                flaky_call,
+            )
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(attempts["count"], 3)
+
+    def test_call_akshare_with_resilience_opens_circuit_after_consecutive_failures(self) -> None:
+        screener_service_module._AKSHARE_SOURCE_CIRCUIT.clear()
+
+        def always_fail():
+            raise ConnectionError("Connection aborted")
+
+        with patch.object(screener_service_module, "_AKSHARE_RETRY_MAX_ATTEMPTS", 1):
+            with patch.object(screener_service_module, "_AKSHARE_CIRCUIT_FAILURE_THRESHOLD", 2):
+                with patch.object(screener_service_module, "_AKSHARE_CIRCUIT_COOLDOWN_SECONDS", 60.0):
+                    with patch("src.services.stock_screener_service.time.sleep", return_value=None):
+                        with self.assertRaises(RuntimeError):
+                            screener_service_module._call_akshare_with_resilience(
+                                "akshare_test_circuit",
+                                "AkShare circuit test",
+                                always_fail,
+                            )
+                        with self.assertRaises(RuntimeError):
+                            screener_service_module._call_akshare_with_resilience(
+                                "akshare_test_circuit",
+                                "AkShare circuit test",
+                                always_fail,
+                            )
+                        with self.assertRaisesRegex(RuntimeError, "circuit open"):
+                            screener_service_module._call_akshare_with_resilience(
+                                "akshare_test_circuit",
+                                "AkShare circuit test",
+                                always_fail,
+                            )
+
+    def test_persist_board_basics_keeps_existing_when_new_result_is_empty(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        service._persist_board_basics(  # pylint: disable=protected-access
+            MarketType.CN,
+            "industry",
+            "半导体",
+            [StockBasic(code="603986", name="兆易创新"), StockBasic(code="688981", name="中芯国际")],
+            "cache_seed",
+        )
+        service._persist_board_basics(  # pylint: disable=protected-access
+            MarketType.CN,
+            "industry",
+            "半导体",
+            [],
+            "akshare",
+        )
+
+        entry = self._board_cache["constituents"].get("cn:industry:半导体") or {}
+        items = entry.get("items") or []
+        self.assertEqual(len(items), 2)
+        self.assertEqual(items[0]["code"], "603986")
 
     def test_build_universe_requires_codes_for_us(self) -> None:
         service = StockScreenerService(manager=_FakeManager())

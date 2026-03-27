@@ -75,6 +75,12 @@ from src.services.stock_formula_engine import FormulaParseResult, FormulaValidat
 
 logger = logging.getLogger(__name__)
 _BOARD_CACHE_WRITE_LOCK = threading.Lock()
+_AKSHARE_RETRY_MAX_ATTEMPTS = 3
+_AKSHARE_RETRY_BACKOFF_SECONDS = (0.8, 1.6)
+_AKSHARE_CIRCUIT_FAILURE_THRESHOLD = 5
+_AKSHARE_CIRCUIT_COOLDOWN_SECONDS = 300.0
+_AKSHARE_SOURCE_CIRCUIT: Dict[str, Dict[str, float]] = {}
+_AKSHARE_SOURCE_CIRCUIT_LOCK = threading.Lock()
 _SCALAR_OPERATORS = [Operator.GT.value, Operator.GTE.value, Operator.LT.value, Operator.LTE.value, Operator.EQ.value]
 _SCALAR_INDICATORS = {
     IndicatorKey.HEAT,
@@ -108,6 +114,109 @@ def _ensure_screener_runtime_deps(require_requests: bool = False) -> None:
 def _is_tushare_permission_error(message: str) -> bool:
     lowered = str(message or "").lower()
     return "没有接口访问权限" in str(message or "") or "doc_id=108" in lowered
+
+
+def _classify_upstream_error(exc: Exception) -> str:
+    message = f"{type(exc).__name__}: {exc}".lower()
+    if "nameresolutionerror" in message or "failed to resolve" in message or "nodename nor servname" in message:
+        return "dns"
+    if "timeout" in message or "timed out" in message:
+        return "timeout"
+    if "remotedisconnected" in message:
+        return "remote_disconnected"
+    if "remote end closed connection without response" in message:
+        return "remote_disconnected"
+    if "connection aborted" in message or "connection reset" in message or "max retries exceeded" in message:
+        return "connection"
+    if "ssl" in message or "certificate" in message:
+        return "ssl"
+    return "unknown"
+
+
+def _is_transient_upstream_error(exc: Exception) -> bool:
+    category = _classify_upstream_error(exc)
+    if category == "dns":
+        return False
+    if isinstance(exc, (TimeoutError, ConnectionError, ConnectionResetError, BrokenPipeError)):
+        return True
+    if requests is not None:
+        try:
+            transient_types = (
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ChunkedEncodingError,
+            )
+            if isinstance(exc, transient_types):
+                return True
+        except Exception:
+            pass
+    return category in {"timeout", "remote_disconnected", "connection"}
+
+
+def _is_akshare_circuit_open(source_key: str) -> bool:
+    now = time.time()
+    with _AKSHARE_SOURCE_CIRCUIT_LOCK:
+        entry = _AKSHARE_SOURCE_CIRCUIT.get(source_key) or {}
+        opened_until = float(entry.get("opened_until", 0.0) or 0.0)
+        return opened_until > now
+
+
+def _record_akshare_success(source_key: str) -> None:
+    with _AKSHARE_SOURCE_CIRCUIT_LOCK:
+        _AKSHARE_SOURCE_CIRCUIT[source_key] = {"failures": 0.0, "opened_until": 0.0}
+
+
+def _record_akshare_failure(source_key: str) -> None:
+    now = time.time()
+    with _AKSHARE_SOURCE_CIRCUIT_LOCK:
+        entry = _AKSHARE_SOURCE_CIRCUIT.get(source_key) or {"failures": 0.0, "opened_until": 0.0}
+        failures = int(entry.get("failures", 0.0) or 0.0) + 1
+        opened_until = float(entry.get("opened_until", 0.0) or 0.0)
+        if failures >= _AKSHARE_CIRCUIT_FAILURE_THRESHOLD:
+            opened_until = now + _AKSHARE_CIRCUIT_COOLDOWN_SECONDS
+            failures = 0
+        _AKSHARE_SOURCE_CIRCUIT[source_key] = {"failures": float(failures), "opened_until": opened_until}
+
+
+def _call_akshare_with_resilience(source_key: str, operation: str, fn: Callable[[], Any]) -> Any:
+    if _is_akshare_circuit_open(source_key):
+        raise RuntimeError(f"{operation} skipped: upstream circuit open")
+
+    attempts = max(1, int(_AKSHARE_RETRY_MAX_ATTEMPTS))
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, attempts + 1):
+        try:
+            result = fn()
+            _record_akshare_success(source_key)
+            if attempt > 1:
+                logger.info("[Screener] %s recovered after retry (%s/%s)", operation, attempt, attempts)
+            return result
+        except Exception as exc:
+            last_exc = exc
+            if not _is_transient_upstream_error(exc):
+                raise
+            _record_akshare_failure(source_key)
+            if attempt >= attempts:
+                break
+            backoff = _AKSHARE_RETRY_BACKOFF_SECONDS[min(attempt - 1, len(_AKSHARE_RETRY_BACKOFF_SECONDS) - 1)]
+            logger.warning(
+                "[Screener] transient upstream error: operation=%s attempt=%s/%s category=%s backoff=%.1fs err=%s",
+                operation,
+                attempt,
+                attempts,
+                _classify_upstream_error(exc),
+                backoff,
+                exc,
+            )
+            time.sleep(backoff)
+
+    if _is_akshare_circuit_open(source_key):
+        raise RuntimeError(f"{operation} failed: upstream circuit opened temporarily") from last_exc
+    if last_exc is not None:
+        raise RuntimeError(
+            f"{operation} failed after {attempts} attempts ({_classify_upstream_error(last_exc)}): {last_exc}"
+        ) from last_exc
+    raise RuntimeError(f"{operation} failed with unknown upstream error")
 
 
 @contextmanager
@@ -641,9 +750,17 @@ def _fetch_cn_board_constituents(board_type: str, board_name: str) -> Tuple[List
         raise RuntimeError(f"akshare unavailable: {exc}") from exc
 
     if board_type == "industry":
-        df = ak.stock_board_industry_cons_em(symbol=board_name)
+        df = _call_akshare_with_resilience(
+            source_key="akshare_cn_board_constituents_industry",
+            operation=f"AkShare CN industry constituents({board_name})",
+            fn=lambda: ak.stock_board_industry_cons_em(symbol=board_name),
+        )
     elif board_type == "concept":
-        df = ak.stock_board_concept_cons_em(symbol=board_name)
+        df = _call_akshare_with_resilience(
+            source_key="akshare_cn_board_constituents_concept",
+            operation=f"AkShare CN concept constituents({board_name})",
+            fn=lambda: ak.stock_board_concept_cons_em(symbol=board_name),
+        )
     else:
         raise ValueError(f"unsupported board type: {board_type}")
 
@@ -672,9 +789,17 @@ def _fetch_cn_board_catalog(board_type: str) -> Tuple[List[Dict[str, Any]], str]
         raise RuntimeError(f"akshare unavailable: {exc}") from exc
 
     if board_type == ScreenerBoardType.INDUSTRY.value:
-        df = ak.stock_board_industry_name_em()
+        df = _call_akshare_with_resilience(
+            source_key="akshare_cn_board_catalog_industry",
+            operation="AkShare CN industry catalog",
+            fn=ak.stock_board_industry_name_em,
+        )
     elif board_type == ScreenerBoardType.CONCEPT.value:
-        df = ak.stock_board_concept_name_em()
+        df = _call_akshare_with_resilience(
+            source_key="akshare_cn_board_catalog_concept",
+            operation="AkShare CN concept catalog",
+            fn=ak.stock_board_concept_name_em,
+        )
     else:
         raise ValueError(f"unsupported board type: {board_type}")
 
@@ -818,6 +943,19 @@ class StockScreenerService:
         cache: Optional[Dict[str, Any]] = None,
     ) -> None:
         target_cache = cache if cache is not None else self._load_board_cache()
+        existing_entry = get_constituent_entry(target_cache, market.value, board_type, board_name)
+        existing_basics = self._cached_entry_to_basics(existing_entry)
+        if not basics:
+            if existing_basics:
+                logger.warning(
+                    "[Screener] skip empty board cache overwrite: market=%s board_type=%s board=%s keep=%s source=%s",
+                    market.value,
+                    board_type,
+                    board_name,
+                    len(existing_basics),
+                    str((existing_entry or {}).get("source") or "cache"),
+                )
+            return
         updated_at = datetime.now(timezone.utc).isoformat()
         set_constituent_entry(
             target_cache,
@@ -2128,6 +2266,7 @@ class StockScreenerService:
         self,
         request: ScreenerScanRequest,
         progress_callback: Optional[Callable[[int, int, int, str], None]] = None,
+        full_results_callback: Optional[Callable[[List[ScreenerScanResultItem]], None]] = None,
     ) -> ScreenerScanResponse:
         _ensure_screener_runtime_deps()
         if request.market != MarketType.CN and request.board_filters:
@@ -2229,6 +2368,11 @@ class StockScreenerService:
         reverse = request.sort_dir.lower() != "asc"
         sort_key = self._build_sort_key(request.sort_by)
         results.sort(key=sort_key, reverse=reverse)
+        if full_results_callback is not None:
+            try:
+                full_results_callback(list(results))
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.debug("[Screener] full results callback failed: %s", exc, exc_info=True)
         total = len(results)
         elapsed = max(time.perf_counter() - started_at, 1e-6)
         scanned_per_second = float(scanned) / elapsed

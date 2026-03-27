@@ -340,10 +340,26 @@ class ScreenerScanResultItem(BaseModel):
     heat: Optional[float] = None
 
 
+class ScreenerExportFormat(str, Enum):
+    CSV = "csv"
+    XLSX = "xlsx"
+
+
+class ScreenerExportScope(str, Enum):
+    ALL = "all"
+    PAGE = "page"
+
+
 class ScreenerScanResponse(BaseModel):
     total: int
     results: List[ScreenerScanResultItem] = Field(default_factory=list)
     csv: Optional[str] = None
+
+
+class ScreenerRowsExportRequest(BaseModel):
+    format: ScreenerExportFormat = Field(default=ScreenerExportFormat.XLSX)
+    items: List[ScreenerScanResultItem] = Field(default_factory=list)
+    filename: Optional[str] = Field(default=None)
 
 
 class ScreenerTaskAccepted(BaseModel):

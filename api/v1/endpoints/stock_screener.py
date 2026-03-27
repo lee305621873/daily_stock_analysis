@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import json
 import logging
 from datetime import datetime
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.v1.schemas.common import ErrorResponse
@@ -19,14 +21,19 @@ from api.v1.schemas.stocks import (
     FormulaValidationResponse,
     IndicatorMeta,
     MarketType,
+    ScreenerExportFormat,
+    ScreenerExportScope,
     ScreenerBoardConstituentResponse,
     ScreenerBoardOption,
     ScreenerBoardPreview,
     ScreenerBoardType,
+    ScreenerRowsExportRequest,
     ScreenerScanRequest,
+    ScreenerScanResultItem,
     ScreenerScanResponse,
     ScreenerScopeOption,
     ScreenerTaskAccepted,
+    ScreenerTaskStatusEnum,
     ScreenerTaskStatusResponse,
 )
 from src.services.stock_screener_service import StockScreenerService
@@ -318,6 +325,125 @@ def get_screener_task(task_id: str):
             detail={"error": "task_not_found", "message": f"选股任务不存在: {task_id}"},
         )
     return ScreenerTaskStatusResponse(**task.to_dict(include_result=True))
+
+
+@router.get(
+    "/tasks/{task_id}/export",
+    responses={
+        200: {"description": "Exported file stream"},
+        404: {"description": "Task not found", "model": ErrorResponse},
+        409: {"description": "Task not completed", "model": ErrorResponse},
+    },
+    summary="Export screener task results as CSV/XLSX",
+)
+def export_screener_task_results(
+    task_id: str,
+    format: ScreenerExportFormat = Query(default=ScreenerExportFormat.XLSX),
+    scope: ScreenerExportScope = Query(default=ScreenerExportScope.ALL),
+):
+    task_queue = get_stock_screener_task_queue()
+    task = task_queue.get_task(task_id)
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "task_not_found", "message": f"选股任务不存在: {task_id}"},
+        )
+    if task.status != ScreenerTaskStatusEnum.COMPLETED:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "task_not_completed", "message": "任务尚未完成，暂时无法导出"},
+        )
+
+    items = task_queue.get_task_export_items(task_id, scope=scope.value)
+    if items is None:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "task_export_unavailable", "message": "任务结果暂不可导出，请稍后重试"},
+        )
+    filename = f"stock-screener-{task_id[:8]}-{scope.value}"
+    return _build_export_response(items, format, filename)
+
+
+@router.post(
+    "/export/rows",
+    responses={
+        200: {"description": "Exported file stream"},
+        400: {"description": "Invalid request", "model": ErrorResponse},
+    },
+    summary="Export provided screener rows as CSV/XLSX",
+)
+def export_screener_rows(body: ScreenerRowsExportRequest):
+    filename = body.filename or "stock-screener-rows"
+    return _build_export_response(body.items, body.format, filename)
+
+
+_EXPORT_HEADERS = ["代码", "名称", "最新价", "热度", "命中条件/公式", "板块", "数据源"]
+
+
+def _build_export_response(
+    items: list[ScreenerScanResultItem],
+    export_format: ScreenerExportFormat,
+    filename_prefix: str,
+) -> StreamingResponse:
+    if export_format == ScreenerExportFormat.CSV:
+        payload = _to_csv_bytes(items)
+        suffix = "csv"
+        media_type = "text/csv; charset=utf-8"
+    else:
+        payload = _to_xlsx_bytes(items)
+        suffix = "xlsx"
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_prefix = "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in filename_prefix).strip("-")
+    if not safe_prefix:
+        safe_prefix = "stock-screener"
+    filename = f"{safe_prefix}-{timestamp}.{suffix}"
+    return StreamingResponse(
+        io.BytesIO(payload),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _sanitize_excel_text(value: str) -> str:
+    if value and value[0] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
+
+
+def _scan_item_to_row(item: ScreenerScanResultItem) -> list[Any]:
+    return [
+        _sanitize_excel_text(item.code),
+        _sanitize_excel_text(item.name),
+        round(float(item.last_close), 2),
+        round(float(item.heat), 2) if item.heat is not None else "",
+        _sanitize_excel_text(" | ".join(item.matched_conditions)),
+        _sanitize_excel_text(" / ".join(item.boards)),
+        _sanitize_excel_text(item.data_source),
+    ]
+
+
+def _to_csv_bytes(items: list[ScreenerScanResultItem]) -> bytes:
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(_EXPORT_HEADERS)
+    for item in items:
+        writer.writerow(_scan_item_to_row(item))
+    return output.getvalue().encode("utf-8-sig")
+
+
+def _to_xlsx_bytes(items: list[ScreenerScanResultItem]) -> bytes:
+    from openpyxl import Workbook
+
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet(title="选股结果")
+    ws.append(_EXPORT_HEADERS)
+    for item in items:
+        ws.append(_scan_item_to_row(item))
+    output = io.BytesIO()
+    wb.save(output)
+    return output.getvalue()
 
 
 def _format_sse_event(event_type: str, data: Dict[str, Any]) -> str:

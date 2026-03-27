@@ -57,6 +57,8 @@ vi.mock('../../api/screener', () => ({
     scan: vi.fn(),
     getTaskStatus: vi.fn(),
     getTaskStreamUrl: vi.fn(),
+    exportTaskResults: vi.fn(),
+    exportRows: vi.fn(),
   },
 }));
 
@@ -152,6 +154,8 @@ describe('StockScreenerPage', () => {
     mockedScreenerApi.scan.mockReset();
     mockedScreenerApi.getTaskStatus.mockReset();
     mockedScreenerApi.getTaskStreamUrl.mockReset();
+    mockedScreenerApi.exportTaskResults.mockReset();
+    mockedScreenerApi.exportRows.mockReset();
     mockedScreenerApi.getScopes.mockResolvedValue(scopeCatalog);
     mockedScreenerApi.getBoards.mockResolvedValue(boardCatalog);
     mockedScreenerApi.getBoardPreview.mockResolvedValue(boardPreview);
@@ -170,6 +174,8 @@ describe('StockScreenerPage', () => {
     mockedScreenerApi.validateFormula.mockResolvedValue(formulaValidation);
     mockedScreenerApi.scan.mockResolvedValue(scanResponse);
     mockedScreenerApi.getTaskStreamUrl.mockReturnValue('http://localhost/api/v1/stocks/screener/tasks/stream');
+    mockedScreenerApi.exportTaskResults.mockResolvedValue(new Blob(['code,name\n600519,贵州茅台\n'], { type: 'text/csv;charset=utf-8' }));
+    mockedScreenerApi.exportRows.mockResolvedValue(new Blob(['code,name\n600519,贵州茅台\n'], { type: 'text/csv;charset=utf-8' }));
     mockedScreenerApi.getTaskStatus.mockResolvedValue({
       taskId: 'task-001',
       market: 'cn',

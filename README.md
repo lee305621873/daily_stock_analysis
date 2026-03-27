@@ -50,6 +50,8 @@ demo
 
 > 技术公式语法、函数清单与准确性口径文档见 `docs/stock-formula-spec.md`、`docs/stock-formula-functions.md`、`docs/stock-formula-accuracy.md`。
 
+> 公式校验现支持常见通达信风格写法兼容：如 `VAR1:=...; VAR2:=...; XG: VAR1 AND VAR2;` 会自动转换为内部 DSL 表达式；同时兼容部分字段名换行拆分（如 `C\nLOSE`）场景。
+
 > 选股页公式编辑器已内置 `26` 个公式模板（趋势跟随 / 动量突破 / 均值回归 / 量价共振四类），并优先采用公开研究与公开回测中相对稳健、胜率倾向较高的规则组合作为默认示例；仍建议结合你的市场与持有周期做本地回测后再实盘使用。
 
 > 公式编辑器支持“我的公式”本地保存与复用（浏览器 `localStorage`），可将当前公式一键保存、下次直接套用或删除；公式校验结果新增复杂度等级/评分、表达式节点数、函数调用分布与优化建议，便于快速判断公式可维护性与扫描成本。
@@ -62,11 +64,17 @@ demo
 
 > 如需直接导出板块代码，可运行 `python scripts/export_board_codes.py --market cn --board-type industry --board-name 半导体`；半导体也保留了快捷脚本 `python scripts/export_semiconductor_codes.py`。脚本与 API 现在共用同一条 A 股板块链路：`AkShare -> Tushare -> 搜狐板块页 -> 仓库维护清单`。
 
+> 如需快速判断当前环境的 AkShare 板块接口是否可用，可运行 `python scripts/test_akshare_screener.py --board-type industry --board 半导体`；脚本会输出 `catalog_ok/constituents_ok`、耗时与错误分类（dns/timeout/connection/remote_disconnected/ssl）。
+
 > A 股板块成分股会按“多源并集”方式聚合（Sohu/AkShare/Tushare/本地维护清单），展示顺序以 Sohu 实时顺序优先；`board_catalog` 的 `estimated_count` 也会优先取已缓存成分股数量，并在日志中输出各来源命中数量，便于排查“半导体不是 418”这类数量异常。
+
+> A 股板块 AkShare 链路已增加瞬时错误重试（指数退避）与短期熔断；当实时请求返回空结果时，会保留已有缓存（stale-if-error）避免把有效缓存覆盖成空列表。
 
 > `GET /api/v1/stocks/screener/boards/preview` 现支持全量预览：`limit<=0` 时返回板块全部成分股代码；Web 默认按全量预览显示（不再固定 20 条）。
 
 > 选股请求若传入 `board_filters`（如 `半导体`），后端会优先构建板块并集股票池再执行扫描，不再先跑全 A 股再做结果后过滤；日志会额外输出 `universe prepared`，可直接核对本次扫描来源与股票池数量。
+
+> 选股结果支持一键导出 `Excel(.xlsx)` 与 `CSV(.csv)`：后台任务完成后可按任务导出全量命中结果；小范围同步扫描结果也支持按当前可见结果导出，便于复盘与二次分析。
 
 > A 股自定义股票池代码输入支持粘连容错：如 `002218.300528`、`002218,300528`、`002218300528` 会自动拆分为 `002218` 与 `300528`，降低因分隔符格式差异导致的 `invalid cn codes` 报错。
 

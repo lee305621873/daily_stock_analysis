@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### 新增
 
 - 🖥️ **WebUI 控制台日志启动脚本**：新增 `scripts/run_webui_with_logs.sh`，以 `PYTHONUNBUFFERED=1` 前台启动 `--webui-only` 服务，并将当前终端输出同步写入 `logs/console_*.log`，便于排查 Agent Chat / SSE / LLM 调用日志。
+- 🧪 **AkShare 选股链路自检脚本**：新增 `scripts/test_akshare_screener.py`，可一键检测板块目录与板块成分接口是否可用，并输出耗时与错误分类（dns/timeout/connection/remote_disconnected/ssl），用于快速定位 “akshare unavailable” 根因。
 ### 新功能
 
 - 📊 **多市场技术指标选股器增强**
@@ -32,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - 公式编辑器模板扩充到 `26` 个（不少于 20），覆盖趋势跟随、突破、均值回归、量价共振等高胜率倾向规则；默认模板可直接用于 A/H/US 三市场统一 DSL 扫描。
   - 公式编辑器新增“我的公式”本地保存能力：支持将当前公式保存到浏览器本地并复用/删除，便于迭代个性化策略模板。
   - 公式校验结果增强：新增复杂度等级/评分、表达式节点数、函数调用分布与优化建议，帮助快速评估公式可读性、维护成本与扫描耗时风险。
+  - 选股结果导出增强：Web 侧新增 `Excel(.xlsx)` 与 `CSV(.csv)` 导出；后端新增任务结果导出接口（支持 `all/page` 范围）与行数据导出接口，支持后台任务全量导出和小范围同步结果导出。
   - 选股扫描接口在“未显式传入 `codes` 且存在有效范围（scope/board）”时改为默认后台任务（`202 + task_id`），降低范围扫描直接命中 HTTP 超时的概率；Web 端同步按该规则优先走异步进度流。
   - 修复扫描范围元数据接口过慢导致前端回退为“仅 A 股全市场”的问题；现在扫描范围列表优先使用本地配置预览，页面可稳定展示 A 股预置板块、动态行业/概念板块和自定义股票池入口。
   - A 股预置板块快捷入口（如 `A股半导体`）现在也会主动加载真实板块预览；若实时板块接口失败，则回退到维护清单，避免页面误以为该范围只有 20 只代表股。
@@ -62,9 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - 港股/美股离线兜底池扩充阈值从 `24` 提升到 `48`（`config+preset_pool`），即使临时无外网也能显著提高板块覆盖股票数量。
   - A/H/US 动态板块入口文案统一为“（自定义）”，避免“自选”与“自定义股票池”语义冲突。
   - 公式校验接口对“公式语法/函数不合法”改为返回结构化 `valid=false`，前端展示“公式未通过”而不是通用请求失败，避免把业务校验误判成服务故障。
+  - 公式引擎新增通达信风格语法兼容层：支持 `:=` 变量赋值、`;` 多语句与 `XG:` 输出标签自动转换为内部 DSL，并兼容部分字段被换行拆分（如 `C\nLOSE`）导致的校验失败场景。
   - 技术指标选股扫描增加专用并发与吞吐优化：新增 `STOCK_SCREENER_MAX_WORKERS`（默认 `16`）与 `STOCK_SCREENER_PROGRESS_UPDATE_STEP`（默认 `5`），扫描线程数按候选数动态收缩；同一次扫描会复用首个成功历史数据源作为后续优先源，减少重复失败链路；日志新增 `elapsed + stocks/min` 指标用于性能核对。
   - 条件选股指标扩展：新增 `HEAT / PE / PB / PEG / ROE / REVENUE_YOY / NET_PROFIT_YOY`；其中 `PEG` 按 `PE / 净利润同比(%)` 估算，净利润同比<=0或缺失时自动判定为不可用。
   - 条件引擎新增“技术序列指标 + 估值/基本面标量指标”混合比较能力；仅当请求中使用相关指标时才按需拉取实时估值/基本面数据，并在扫描日志输出标量指标覆盖率（available/missing）便于定位数据源缺失。
+  - A 股板块 AkShare 接口新增稳定性增强：对瞬时网络错误自动重试（指数退避）、连续失败熔断与快速失败；并在落缓存时启用 `stale-if-error`（空结果不覆盖已有缓存成分股），降低上游短时抖动对扫描可用性的影响。
 
 ## [3.7.0] - 2026-03-15
 

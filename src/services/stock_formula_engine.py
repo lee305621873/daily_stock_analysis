@@ -828,15 +828,89 @@ class StockFormulaEngine:
     def _normalize_formula(self, formula: str) -> str:
         normalized = (formula or "").strip()
         normalized = normalized.replace("，", ",").replace("（", "(").replace("）", ")")
+        normalized = normalized.replace("；", ";").replace("：", ":")
         normalized = normalized.replace("＋", "+").replace("－", "-").replace("×", "*").replace("÷", "/")
+        if ":=" in normalized or ";" in normalized:
+            normalized = self._normalize_tdx_formula(normalized)
         normalized = re.sub(r"\bAND\b", " and ", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bOR\b", " or ", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"\bNOT\b", " not ", normalized, flags=re.IGNORECASE)
         normalized = re.sub(r"(?<![<>=!])=(?!=)", "==", normalized)
         normalized = re.sub(r"\s+", " ", normalized).strip()
+        normalized = self._compact_split_identifiers(normalized)
         for alias, target in NAME_ALIASES.items():
             normalized = re.sub(rf"\b{alias}\b", target, normalized, flags=re.IGNORECASE)
         return normalized
+
+    def _compact_split_identifiers(self, formula: str) -> str:
+        compacted = formula
+        keywords = sorted(
+            set(FIELD_NAMES).union(FUNCTIONS.keys()).union({"TRUE", "FALSE"}),
+            key=len,
+            reverse=True,
+        )
+        for keyword in keywords:
+            if len(keyword) < 2:
+                continue
+            pattern = r"\b" + r"\s*".join(re.escape(ch) for ch in keyword) + r"\b"
+            compacted = re.sub(pattern, keyword, compacted, flags=re.IGNORECASE)
+        return compacted
+
+    def _normalize_tdx_formula(self, formula: str) -> str:
+        statements = [segment.strip() for segment in re.split(r";+", formula) if segment.strip()]
+        if not statements:
+            return formula
+
+        assignments: Dict[str, str] = {}
+        assignment_order: List[str] = []
+        final_expression: Optional[str] = None
+        reserved = set(FIELD_NAMES).union(FUNCTIONS.keys()).union({"AND", "OR", "NOT", "TRUE", "FALSE"})
+
+        for statement in statements:
+            if ":=" in statement:
+                var_name, expression = statement.split(":=", 1)
+                var_name = var_name.strip()
+                expression = expression.strip()
+                if not var_name or not expression:
+                    raise FormulaValidationError(f"Invalid TDX assignment: {statement}")
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", var_name):
+                    raise FormulaValidationError(f"Invalid variable name in TDX formula: {var_name}")
+                upper_var_name = var_name.upper()
+                if upper_var_name in reserved:
+                    raise FormulaValidationError(f"Variable name conflicts with reserved keyword: {var_name}")
+                assignments[upper_var_name] = expression
+                if upper_var_name not in assignment_order:
+                    assignment_order.append(upper_var_name)
+                continue
+
+            label_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)$", statement)
+            if label_match:
+                final_expression = label_match.group(2).strip()
+                continue
+            final_expression = statement
+
+        if final_expression is None:
+            if not assignment_order:
+                return formula
+            final_expression = assignment_order[-1]
+
+        return self._expand_tdx_expression(final_expression, assignments, resolving=[])
+
+    def _expand_tdx_expression(self, expression: str, assignments: Dict[str, str], resolving: List[str]) -> str:
+        token_pattern = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
+
+        def _replace(match: re.Match[str]) -> str:
+            name = match.group(0)
+            upper_name = name.upper()
+            if upper_name not in assignments:
+                return name
+            if upper_name in resolving:
+                cycle = " -> ".join(resolving + [upper_name])
+                raise FormulaValidationError(f"Circular variable reference detected: {cycle}")
+            expanded = self._expand_tdx_expression(assignments[upper_name], assignments, resolving + [upper_name])
+            return f"({expanded})"
+
+        return token_pattern.sub(_replace, expression)
 
     def _build_warnings(self, parsed: FormulaParseResult) -> List[str]:
         warnings: List[str] = []

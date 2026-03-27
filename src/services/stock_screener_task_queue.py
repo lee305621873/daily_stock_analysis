@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from api.v1.schemas.stocks import (
     MarketType,
     ScreenerScanRequest,
+    ScreenerScanResultItem,
     ScreenerScanResponse,
     ScreenerTaskAccepted,
     ScreenerTaskStatusEnum,
@@ -40,6 +41,7 @@ class ScreenerTaskRecord:
     matched_count: int = 0
     message: Optional[str] = None
     result: Optional[ScreenerScanResponse] = None
+    full_results: Optional[List[ScreenerScanResultItem]] = None
     error: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.now)
     started_at: Optional[datetime] = None
@@ -75,6 +77,7 @@ class ScreenerTaskRecord:
             matched_count=self.matched_count,
             message=self.message,
             result=self.result.model_copy(deep=True) if self.result else None,
+            full_results=None,
             error=self.error,
             created_at=self.created_at,
             started_at=self.started_at,
@@ -174,6 +177,13 @@ class StockScreenerTaskQueue:
 
         try:
             service = StockScreenerService()
+
+            def _capture_full_results(items: List[ScreenerScanResultItem]) -> None:
+                with self._data_lock:
+                    task_snapshot = self._tasks.get(task_id)
+                    if task_snapshot is not None:
+                        task_snapshot.full_results = list(items)
+
             result = service.scan(
                 request,
                 progress_callback=lambda scanned, total, matched, message: self._update_progress(
@@ -183,6 +193,7 @@ class StockScreenerTaskQueue:
                     matched,
                     message,
                 ),
+                full_results_callback=_capture_full_results,
             )
             with self._data_lock:
                 task = self._tasks.get(task_id)
@@ -212,6 +223,17 @@ class StockScreenerTaskQueue:
             self._broadcast_event("task_failed", snapshot)
             self._cleanup_old_tasks()
             return None
+
+    def get_task_export_items(self, task_id: str, scope: str = "all") -> Optional[List[ScreenerScanResultItem]]:
+        with self._data_lock:
+            task = self._tasks.get(task_id)
+            if task is None or task.status != ScreenerTaskStatusEnum.COMPLETED or task.result is None:
+                return None
+            if scope == "page":
+                return list(task.result.results)
+            if task.full_results:
+                return list(task.full_results)
+            return list(task.result.results)
 
     def _update_progress(
         self,

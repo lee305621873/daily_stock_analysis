@@ -20,7 +20,7 @@ except ModuleNotFoundError:
 
 import src.auth as auth
 from api.app import create_app
-from api.v1.schemas.stocks import ScreenerTaskAccepted, ScreenerTaskStatusEnum
+from api.v1.schemas.stocks import ScreenerScanResultItem, ScreenerTaskAccepted, ScreenerTaskStatusEnum
 from src.config import Config
 from src.storage import DatabaseManager
 
@@ -385,3 +385,92 @@ class StockScreenerApiTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["task_id"], "task-001")
         self.assertEqual(response.json()["progress"], 35)
+
+    def test_export_task_results_csv_endpoint(self) -> None:
+        task_record = SimpleNamespace(status=ScreenerTaskStatusEnum.COMPLETED, result=SimpleNamespace(results=[]))
+        export_rows = [
+            ScreenerScanResultItem(
+                code="600519",
+                name="贵州茅台",
+                last_close=1888.88,
+                data_source="mock",
+                matched_conditions=["RSI < 30"],
+                boards=["白酒"],
+                heat=1.23,
+            )
+        ]
+
+        with patch("api.v1.endpoints.stock_screener.get_stock_screener_task_queue") as queue_factory:
+            queue_factory.return_value.get_task.return_value = task_record
+            queue_factory.return_value.get_task_export_items.return_value = export_rows
+
+            response = self.client.get("/api/v1/stocks/screener/tasks/task-001/export?format=csv&scope=all")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/csv", response.headers.get("content-type", ""))
+        self.assertIn("attachment;", response.headers.get("content-disposition", ""))
+        decoded = response.content.decode("utf-8-sig")
+        self.assertIn("贵州茅台", decoded)
+        self.assertIn("600519", decoded)
+
+    def test_export_task_results_xlsx_endpoint(self) -> None:
+        task_record = SimpleNamespace(status=ScreenerTaskStatusEnum.COMPLETED, result=SimpleNamespace(results=[]))
+        export_rows = [
+            ScreenerScanResultItem(
+                code="AAPL",
+                name="苹果",
+                last_close=188.12,
+                data_source="mock",
+                matched_conditions=["趋势延续"],
+                boards=["美股科技"],
+                heat=1.11,
+            )
+        ]
+
+        with patch("api.v1.endpoints.stock_screener.get_stock_screener_task_queue") as queue_factory:
+            queue_factory.return_value.get_task.return_value = task_record
+            queue_factory.return_value.get_task_export_items.return_value = export_rows
+
+            response = self.client.get("/api/v1/stocks/screener/tasks/task-002/export?format=xlsx&scope=all")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            response.headers.get("content-type", ""),
+        )
+        self.assertTrue(response.content.startswith(b"PK"))
+
+    def test_export_task_results_rejects_incomplete_task(self) -> None:
+        task_record = SimpleNamespace(status=ScreenerTaskStatusEnum.PROCESSING, result=None)
+
+        with patch("api.v1.endpoints.stock_screener.get_stock_screener_task_queue") as queue_factory:
+            queue_factory.return_value.get_task.return_value = task_record
+
+            response = self.client.get("/api/v1/stocks/screener/tasks/task-003/export?format=xlsx&scope=all")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"], "task_not_completed")
+
+    def test_export_rows_endpoint(self) -> None:
+        response = self.client.post(
+            "/api/v1/stocks/screener/export/rows",
+            json={
+                "format": "xlsx",
+                "filename": "my-picked-stocks",
+                "items": [
+                    {
+                        "code": "00700",
+                        "name": "腾讯控股",
+                        "last_close": 320.5,
+                        "data_source": "mock",
+                        "matched_conditions": ["趋势延续"],
+                        "boards": ["港股互联网"],
+                        "heat": 1.09,
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment;", response.headers.get("content-disposition", ""))
+        self.assertTrue(response.content.startswith(b"PK"))

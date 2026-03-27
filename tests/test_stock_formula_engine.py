@@ -52,6 +52,21 @@ class StockFormulaEngineTestCase(unittest.TestCase):
 
         self.assertTrue(result.matched)
 
+    def test_validate_formula_supports_tdx_assignments(self) -> None:
+        formula = "VAR1:=COUNT(CLOSE/REF(CLOSE,1)<0.97,20)>=3;VAR2:=EXIST(CLOSE/REF(CLOSE,1)>1.095,5);XG:VAR1 AND VAR2;"
+        result = self.engine.validate(formula)
+
+        self.assertTrue(result.valid)
+        self.assertIn("COUNT", result.functions)
+        self.assertIn("EXIST", result.functions)
+
+    def test_validate_formula_supports_split_field_identifier(self) -> None:
+        formula = "VAR1:=COUNT(C\nLOSE/REF(CLOSE,1)<0.97,20)>=1;XG:VAR1;"
+        result = self.engine.validate(formula)
+
+        self.assertTrue(result.valid)
+        self.assertIn("CLOSE", result.normalized_formula)
+
 
 if __name__ == "__main__":
     unittest.main()

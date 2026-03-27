@@ -20,6 +20,8 @@ export type ScreenerMode = 'condition' | 'formula' | 'hybrid';
 export type ScreenerScopeKind = 'full_market' | 'preset_pool' | 'board' | 'board_dynamic' | 'custom_pool';
 export type ScreenerBoardType = 'industry' | 'concept';
 export type ScreenerTaskStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type ScreenerExportFormat = 'csv' | 'xlsx';
+export type ScreenerExportScope = 'all' | 'page';
 export type ScreenerTaskEventType =
   | 'connected'
   | 'task_created'

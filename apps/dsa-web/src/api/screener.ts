@@ -6,8 +6,11 @@ import type {
   ScreenerBoardPreview,
   FormulaFunctionMeta,
   FormulaValidationResponse,
+  ScreenerExportFormat,
+  ScreenerExportScope,
   IndicatorMeta,
   ScreenerScanRequest,
+  ScreenerScanResultItem,
   ScreenerScanResponse,
   ScreenerScopeOption,
   ScreenerTaskAccepted,
@@ -115,5 +118,22 @@ export const screenerApi = {
   getTaskStreamUrl(): string {
     const baseUrl = apiClient.defaults.baseURL || '';
     return `${baseUrl}/api/v1/stocks/screener/tasks/stream`;
+  },
+
+  async exportTaskResults(taskId: string, format: ScreenerExportFormat = 'xlsx', scope: ScreenerExportScope = 'all'): Promise<Blob> {
+    const response = await apiClient.get(`/api/v1/stocks/screener/tasks/${taskId}/export`, {
+      params: { format, scope },
+      responseType: 'blob',
+    });
+    return response.data as Blob;
+  },
+
+  async exportRows(items: ScreenerScanResultItem[], format: ScreenerExportFormat = 'xlsx', filename?: string): Promise<Blob> {
+    const response = await apiClient.post(
+      '/api/v1/stocks/screener/export/rows',
+      { format, items, filename },
+      { responseType: 'blob' },
+    );
+    return response.data as Blob;
   },
 };
