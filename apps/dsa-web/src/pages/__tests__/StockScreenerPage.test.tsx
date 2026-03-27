@@ -53,6 +53,9 @@ vi.mock('../../api/screener', () => ({
     getBoardPreview: vi.fn(),
     getIndicators: vi.fn(),
     getFormulaFunctions: vi.fn(),
+    listFormulaTemplates: vi.fn(),
+    upsertFormulaTemplate: vi.fn(),
+    deleteFormulaTemplate: vi.fn(),
     validateFormula: vi.fn(),
     scan: vi.fn(),
     getTaskStatus: vi.fn(),
@@ -150,6 +153,9 @@ describe('StockScreenerPage', () => {
     mockedScreenerApi.getBoardPreview.mockReset();
     mockedScreenerApi.getIndicators.mockReset();
     mockedScreenerApi.getFormulaFunctions.mockReset();
+    mockedScreenerApi.listFormulaTemplates.mockReset();
+    mockedScreenerApi.upsertFormulaTemplate.mockReset();
+    mockedScreenerApi.deleteFormulaTemplate.mockReset();
     mockedScreenerApi.validateFormula.mockReset();
     mockedScreenerApi.scan.mockReset();
     mockedScreenerApi.getTaskStatus.mockReset();
@@ -171,6 +177,17 @@ describe('StockScreenerPage', () => {
         params: [],
       },
     ]);
+    mockedScreenerApi.listFormulaTemplates.mockResolvedValue([]);
+    mockedScreenerApi.upsertFormulaTemplate.mockImplementation(async (payload) => ({
+      id: payload.id || 'custom-template-1',
+      label: payload.label,
+      value: payload.value,
+      updatedAt: '2026-03-27T12:00:00',
+    }));
+    mockedScreenerApi.deleteFormulaTemplate.mockResolvedValue({
+      id: 'custom-template-1',
+      deleted: true,
+    });
     mockedScreenerApi.validateFormula.mockResolvedValue(formulaValidation);
     mockedScreenerApi.scan.mockResolvedValue(scanResponse);
     mockedScreenerApi.getTaskStreamUrl.mockReturnValue('http://localhost/api/v1/stocks/screener/tasks/stream');
@@ -517,6 +534,13 @@ describe('StockScreenerPage', () => {
     fireEvent.change(await screen.findByLabelText('选股公式'), { target: { value: 'CLOSE > MA(CLOSE, 10)' } });
     fireEvent.click(screen.getByRole('button', { name: '保存到我的公式' }));
 
+    await waitFor(() => {
+      expect(mockedScreenerApi.upsertFormulaTemplate).toHaveBeenCalledWith({
+        id: undefined,
+        label: '我的突破策略',
+        value: 'CLOSE > MA(CLOSE, 10)',
+      });
+    });
     expect(await screen.findByText('已保存到“我的公式”：我的突破策略')).toBeTruthy();
 
     const customSelect = await screen.findByLabelText('我的公式');

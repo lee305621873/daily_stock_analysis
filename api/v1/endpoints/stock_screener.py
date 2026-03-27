@@ -31,6 +31,9 @@ from api.v1.schemas.stocks import (
     ScreenerScanRequest,
     ScreenerScanResultItem,
     ScreenerScanResponse,
+    ScreenerFormulaTemplate,
+    ScreenerFormulaTemplateDeleteResponse,
+    ScreenerFormulaTemplateUpsertRequest,
     ScreenerScopeOption,
     ScreenerTaskAccepted,
     ScreenerTaskStatusEnum,
@@ -194,6 +197,80 @@ def list_formula_functions():
         raise HTTPException(
             status_code=500,
             detail={"error": "internal_error", "message": "加载公式函数元数据失败"},
+        )
+
+
+@router.get(
+    "/formula/templates",
+    response_model=list[ScreenerFormulaTemplate],
+    responses={
+        200: {"description": "Custom formula templates"},
+        500: {"description": "Server error", "model": ErrorResponse},
+    },
+    summary="List screener custom formula templates",
+)
+def list_formula_templates():
+    try:
+        service = StockScreenerService()
+        return service.list_formula_templates()
+    except Exception as exc:
+        logger.error("Failed to load stock formula templates: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": "加载我的公式模板失败"},
+        )
+
+
+@router.post(
+    "/formula/templates",
+    response_model=ScreenerFormulaTemplate,
+    responses={
+        200: {"description": "Template saved"},
+        400: {"description": "Invalid request", "model": ErrorResponse},
+        500: {"description": "Server error", "model": ErrorResponse},
+    },
+    summary="Create or update screener custom formula template",
+)
+def upsert_formula_template(body: ScreenerFormulaTemplateUpsertRequest):
+    try:
+        service = StockScreenerService()
+        return service.upsert_formula_template(
+            label=body.label,
+            value=body.value,
+            template_id=body.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "validation_error", "message": str(exc)},
+        )
+    except Exception as exc:
+        logger.error("Failed to save stock formula template: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": "保存我的公式模板失败"},
+        )
+
+
+@router.delete(
+    "/formula/templates/{template_id}",
+    response_model=ScreenerFormulaTemplateDeleteResponse,
+    responses={
+        200: {"description": "Template deleted"},
+        500: {"description": "Server error", "model": ErrorResponse},
+    },
+    summary="Delete screener custom formula template",
+)
+def delete_formula_template(template_id: str):
+    try:
+        service = StockScreenerService()
+        deleted = service.delete_formula_template(template_id)
+        return ScreenerFormulaTemplateDeleteResponse(id=template_id, deleted=deleted)
+    except Exception as exc:
+        logger.error("Failed to delete stock formula template: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": "删除我的公式模板失败"},
         )
 
 

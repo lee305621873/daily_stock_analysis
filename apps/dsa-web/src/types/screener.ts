@@ -221,3 +221,22 @@ export interface FormulaValidationResponse {
   warnings: string[];
   suggestions?: string[];
 }
+
+export interface ScreenerFormulaTemplate {
+  id: string;
+  label: string;
+  value: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface ScreenerFormulaTemplateUpsertRequest {
+  id?: string;
+  label: string;
+  value: string;
+}
+
+export interface ScreenerFormulaTemplateDeleteResponse {
+  id: string;
+  deleted: boolean;
+}

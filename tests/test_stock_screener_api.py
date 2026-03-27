@@ -187,6 +187,53 @@ class StockScreenerApiTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]["name"], "MA")
 
+    def test_formula_template_list_endpoint(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.list_formula_templates.return_value = [
+                {
+                    "id": "custom-1",
+                    "label": "我的突破策略",
+                    "value": "CLOSE > MA(CLOSE, 10)",
+                    "created_at": "2026-03-27T10:00:00",
+                    "updated_at": "2026-03-27T10:00:00",
+                }
+            ]
+
+            response = self.client.get("/api/v1/stocks/screener/formula/templates")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["id"], "custom-1")
+
+    def test_formula_template_upsert_endpoint(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.upsert_formula_template.return_value = {
+                "id": "custom-1",
+                "label": "我的突破策略",
+                "value": "CLOSE > MA(CLOSE, 10)",
+                "created_at": "2026-03-27T10:00:00",
+                "updated_at": "2026-03-27T11:00:00",
+            }
+
+            response = self.client.post(
+                "/api/v1/stocks/screener/formula/templates",
+                json={
+                    "id": "custom-1",
+                    "label": "我的突破策略",
+                    "value": "CLOSE > MA(CLOSE, 10)",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["label"], "我的突破策略")
+
+    def test_formula_template_delete_endpoint(self) -> None:
+        with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
+            service_cls.return_value.delete_formula_template.return_value = True
+            response = self.client.delete("/api/v1/stocks/screener/formula/templates/custom-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["deleted"])
+
     def test_formula_validate_endpoint(self) -> None:
         with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:
             service_cls.return_value.validate_formula.return_value = {

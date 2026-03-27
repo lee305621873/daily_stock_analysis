@@ -91,5 +91,33 @@ class TestStorage(unittest.TestCase):
 
         DatabaseManager.reset_instance()
 
+    def test_screener_formula_template_crud(self):
+        DatabaseManager.reset_instance()
+        db = DatabaseManager(db_url="sqlite:///:memory:")
+
+        created = db.upsert_screener_formula_template(
+            label="我的策略A",
+            value="CLOSE > MA(CLOSE, 5)",
+        )
+        self.assertTrue(created["id"])
+        self.assertEqual(created["label"], "我的策略A")
+
+        updated = db.upsert_screener_formula_template(
+            template_id=created["id"],
+            label="我的策略A-更新",
+            value="CLOSE > MA(CLOSE, 10)",
+        )
+        self.assertEqual(updated["id"], created["id"])
+        self.assertEqual(updated["label"], "我的策略A-更新")
+
+        templates = db.list_screener_formula_templates()
+        self.assertEqual(len(templates), 1)
+        self.assertEqual(templates[0]["value"], "CLOSE > MA(CLOSE, 10)")
+
+        self.assertTrue(db.delete_screener_formula_template(created["id"]))
+        self.assertEqual(db.list_screener_formula_templates(), [])
+
+        DatabaseManager.reset_instance()
+
 if __name__ == '__main__':
     unittest.main()

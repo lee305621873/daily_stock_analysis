@@ -421,3 +421,29 @@ class FormulaValidationResponse(BaseModel):
     estimated_lookback: int = Field(default=250, ge=1)
     warnings: List[str] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
+
+
+class ScreenerFormulaTemplate(BaseModel):
+    id: str = Field(..., min_length=1, max_length=64)
+    label: str = Field(..., min_length=1, max_length=120)
+    value: str = Field(..., min_length=1)
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ScreenerFormulaTemplateUpsertRequest(BaseModel):
+    id: Optional[str] = Field(default=None, max_length=64)
+    label: str = Field(..., min_length=1, max_length=120)
+    value: str = Field(..., min_length=1)
+
+    @validator("id")
+    def normalize_id(cls, v):
+        if v is None:
+            return None
+        normalized = str(v).strip()
+        return normalized or None
+
+
+class ScreenerFormulaTemplateDeleteResponse(BaseModel):
+    id: str
+    deleted: bool

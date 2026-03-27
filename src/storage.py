@@ -19,6 +19,7 @@ import logging
 import re
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Any, TYPE_CHECKING, Tuple
+from uuid import uuid4
 
 import pandas as pd
 from sqlalchemy import (
@@ -618,6 +619,31 @@ class LLMUsage(Base):
     completion_tokens = Column(Integer, nullable=False, default=0)
     total_tokens = Column(Integer, nullable=False, default=0)
     called_at = Column(DateTime, default=datetime.now, index=True)
+
+
+class ScreenerFormulaTemplate(Base):
+    """技术选股公式模板（用户自定义）持久化表。"""
+
+    __tablename__ = "screener_formula_templates"
+
+    id = Column(String(64), primary_key=True)
+    label = Column(String(120), nullable=False)
+    value = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, index=True)
+
+    __table_args__ = (
+        Index("ix_screener_formula_templates_updated", "updated_at"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "value": self.value,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
 
 
 class DatabaseManager:
@@ -1802,6 +1828,80 @@ class DatabaseManager:
                 )
             )
             return result.rowcount
+
+    # ------------------------------------------------------------------
+    # Stock screener formula templates
+    # ------------------------------------------------------------------
+
+    def list_screener_formula_templates(self, limit: int = 200) -> List[Dict[str, Any]]:
+        safe_limit = max(1, min(int(limit or 200), 500))
+        with self.session_scope() as session:
+            rows = session.execute(
+                select(ScreenerFormulaTemplate)
+                .order_by(desc(ScreenerFormulaTemplate.updated_at), desc(ScreenerFormulaTemplate.created_at))
+                .limit(safe_limit)
+            ).scalars().all()
+            return [row.to_dict() for row in rows]
+
+    def upsert_screener_formula_template(
+        self,
+        label: str,
+        value: str,
+        template_id: Optional[str] = None,
+        keep_limit: int = 200,
+    ) -> Dict[str, Any]:
+        normalized_label = str(label or "").strip()
+        normalized_value = str(value or "").strip()
+        normalized_id = str(template_id or "").strip()
+        if not normalized_label:
+            raise ValueError("template label cannot be empty")
+        if not normalized_value:
+            raise ValueError("template value cannot be empty")
+        if normalized_id and len(normalized_id) > 64:
+            raise ValueError("template id is too long")
+
+        now = datetime.now()
+        with self.session_scope() as session:
+            row: Optional[ScreenerFormulaTemplate] = None
+            if normalized_id:
+                row = session.get(ScreenerFormulaTemplate, normalized_id)
+            if row is None:
+                row = ScreenerFormulaTemplate(id=normalized_id or uuid4().hex)
+                row.created_at = now
+                session.add(row)
+            row.label = normalized_label
+            row.value = normalized_value
+            row.updated_at = now
+            session.flush()
+
+            safe_keep_limit = max(1, min(int(keep_limit or 200), 500))
+            total_count = int(
+                session.execute(select(func.count(ScreenerFormulaTemplate.id))).scalar_one() or 0
+            )
+            overflow = max(0, total_count - safe_keep_limit)
+            if overflow > 0:
+                old_ids = session.execute(
+                    select(ScreenerFormulaTemplate.id)
+                    .order_by(ScreenerFormulaTemplate.updated_at.asc(), ScreenerFormulaTemplate.created_at.asc())
+                    .limit(overflow)
+                ).scalars().all()
+                if old_ids:
+                    session.execute(
+                        delete(ScreenerFormulaTemplate).where(ScreenerFormulaTemplate.id.in_(list(old_ids)))
+                    )
+
+            return row.to_dict()
+
+    def delete_screener_formula_template(self, template_id: str) -> bool:
+        normalized_id = str(template_id or "").strip()
+        if not normalized_id:
+            return False
+        with self.session_scope() as session:
+            row = session.get(ScreenerFormulaTemplate, normalized_id)
+            if row is None:
+                return False
+            session.delete(row)
+            return True
 
     # ------------------------------------------------------------------
     # LLM usage tracking

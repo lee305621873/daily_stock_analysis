@@ -16,6 +16,7 @@ import type {
   MarketType,
   Operator,
   ScreenerCondition,
+  ScreenerFormulaTemplate,
   ScreenerMode,
   ScreenerScanResponse,
   ScreenerScopeOption,
@@ -70,14 +71,9 @@ const FORMULA_TEMPLATES = [
   { label: '短线超跌反转（3 日 RSI）', value: 'CLOSE < LLV(LOW,5) * 1.02 AND RSI(CLOSE,3) < 15 AND CLOSE > REF(CLOSE,1)' },
 ];
 
-const CUSTOM_FORMULA_STORAGE_KEY = 'dsa.screener.custom-formulas.v1';
-
-interface CustomFormulaTemplate {
-  id: string;
-  label: string;
-  value: string;
-  updatedAt: string;
-}
+const LEGACY_CUSTOM_FORMULA_STORAGE_KEY = 'dsa.screener.custom-formulas.v1';
+const MAX_CUSTOM_FORMULA_TEMPLATES = 200;
+type CustomFormulaTemplate = ScreenerFormulaTemplate;
 
 function createDefaultCondition(indicator: IndicatorKey): ScreenerCondition {
   return {
@@ -95,6 +91,25 @@ function parseCodes(codesText: string): string[] {
     .split(/[\s,，\n\r\t]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeCustomTemplates(items: CustomFormulaTemplate[]): CustomFormulaTemplate[] {
+  return items
+    .filter((item) => item && typeof item.id === 'string' && typeof item.label === 'string' && typeof item.value === 'string')
+    .slice(0, MAX_CUSTOM_FORMULA_TEMPLATES);
+}
+
+function loadLegacyCustomFormulaTemplates(): CustomFormulaTemplate[] {
+  try {
+    const raw = window.localStorage.getItem(LEGACY_CUSTOM_FORMULA_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as CustomFormulaTemplate[];
+    if (!Array.isArray(parsed)) return [];
+    return normalizeCustomTemplates(parsed);
+  } catch (error) {
+    console.error('Failed to load legacy custom formula templates:', error);
+    return [];
+  }
 }
 
 function isTaskAccepted(response: ScreenerScanResponse | ScreenerTaskAccepted): response is ScreenerTaskAccepted {
@@ -548,30 +563,59 @@ const StockScreenerPage: React.FC = () => {
   }, [activeTaskId]);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(CUSTOM_FORMULA_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as CustomFormulaTemplate[];
-      if (!Array.isArray(parsed)) return;
-      const normalized = parsed
-        .filter((item) => item && typeof item.id === 'string' && typeof item.label === 'string' && typeof item.value === 'string')
-        .slice(0, 50);
-      setCustomFormulaTemplates(normalized);
-    } catch (error) {
-      console.error('Failed to load custom formula templates:', error);
-    }
+    let cancelled = false;
+    const loadTemplates = async () => {
+      try {
+        const remoteTemplates = normalizeCustomTemplates(await screenerApi.listFormulaTemplates());
+        if (cancelled) return;
+        const legacyTemplates = loadLegacyCustomFormulaTemplates();
+        if (legacyTemplates.length === 0) {
+          setCustomFormulaTemplates(remoteTemplates);
+          return;
+        }
+
+        const missingLegacyTemplates = legacyTemplates.filter(
+          (legacy) =>
+            !remoteTemplates.some(
+              (remote) => remote.id === legacy.id || (remote.label === legacy.label && remote.value === legacy.value),
+            ),
+        );
+        if (missingLegacyTemplates.length === 0) {
+          setCustomFormulaTemplates(remoteTemplates.length ? remoteTemplates : legacyTemplates);
+          window.localStorage.removeItem(LEGACY_CUSTOM_FORMULA_STORAGE_KEY);
+          return;
+        }
+
+        try {
+          const migrated = await Promise.all(
+            missingLegacyTemplates.map((item) => screenerApi.upsertFormulaTemplate({ id: item.id, label: item.label, value: item.value })),
+          );
+          if (cancelled) return;
+          const mergedMap = new Map<string, CustomFormulaTemplate>();
+          for (const item of [...migrated, ...remoteTemplates]) {
+            mergedMap.set(item.id, item);
+          }
+          const mergedTemplates = normalizeCustomTemplates(Array.from(mergedMap.values()));
+          setCustomFormulaTemplates(mergedTemplates);
+          window.localStorage.removeItem(LEGACY_CUSTOM_FORMULA_STORAGE_KEY);
+          setFormulaEditorNotice(`已自动迁移 ${migrated.length} 条“我的公式”到服务端`);
+        } catch (migrationError) {
+          console.error('Failed to migrate legacy custom formula templates:', migrationError);
+          setCustomFormulaTemplates(remoteTemplates.length ? remoteTemplates : legacyTemplates);
+        }
+      } catch (error) {
+        console.error('Failed to load custom formula templates from backend:', error);
+        if (cancelled) return;
+        setCustomFormulaTemplates(loadLegacyCustomFormulaTemplates());
+      }
+    };
+    void loadTemplates();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const persistCustomFormulaTemplates = (next: CustomFormulaTemplate[]) => {
-    setCustomFormulaTemplates(next);
-    try {
-      window.localStorage.setItem(CUSTOM_FORMULA_STORAGE_KEY, JSON.stringify(next));
-    } catch (error) {
-      console.error('Failed to persist custom formula templates:', error);
-    }
-  };
-
-  const handleSaveCustomFormulaTemplate = () => {
+  const handleSaveCustomFormulaTemplate = async () => {
     const normalizedFormula = formulaText.trim();
     const normalizedName = formulaName.trim();
     if (!normalizedFormula) {
@@ -583,29 +627,39 @@ const StockScreenerPage: React.FC = () => {
       return;
     }
 
-    const now = new Date().toISOString();
-    const templateId = selectedCustomTemplateId || `custom-${Date.now()}`;
-    const nextItem: CustomFormulaTemplate = {
-      id: templateId,
-      label: normalizedName || `自定义公式 ${customFormulaTemplates.length + 1}`,
-      value: normalizedFormula,
-      updatedAt: now,
-    };
-    const nextTemplates = [nextItem, ...customFormulaTemplates.filter((item) => item.id !== templateId)].slice(0, 50);
-    persistCustomFormulaTemplates(nextTemplates);
-    setSelectedCustomTemplateId(templateId);
-    setSelectedOfficialTemplate('');
-    setFormulaEditorNotice(`已保存到“我的公式”：${nextItem.label}`);
-    setFormulaValidationError(null);
+    try {
+      const saved = await screenerApi.upsertFormulaTemplate({
+        id: selectedCustomTemplateId || undefined,
+        label: normalizedName || `自定义公式 ${customFormulaTemplates.length + 1}`,
+        value: normalizedFormula,
+      });
+      setCustomFormulaTemplates((previous) =>
+        [saved, ...previous.filter((item) => item.id !== saved.id)].slice(0, MAX_CUSTOM_FORMULA_TEMPLATES),
+      );
+      setSelectedCustomTemplateId(saved.id);
+      setSelectedOfficialTemplate('');
+      setFormulaEditorNotice(`已保存到“我的公式”：${saved.label}`);
+      setFormulaValidationError(null);
+    } catch (error) {
+      setFormulaValidationError(getParsedApiError(error));
+    }
   };
 
-  const handleDeleteCustomFormulaTemplate = () => {
+  const handleDeleteCustomFormulaTemplate = async () => {
     if (!selectedCustomTemplateId) return;
     const deleting = customFormulaTemplates.find((item) => item.id === selectedCustomTemplateId);
-    const nextTemplates = customFormulaTemplates.filter((item) => item.id !== selectedCustomTemplateId);
-    persistCustomFormulaTemplates(nextTemplates);
-    setSelectedCustomTemplateId('');
-    setFormulaEditorNotice(deleting ? `已删除“我的公式”：${deleting.label}` : '已删除当前自定义公式');
+    try {
+      const result = await screenerApi.deleteFormulaTemplate(selectedCustomTemplateId);
+      setCustomFormulaTemplates((previous) => previous.filter((item) => item.id !== selectedCustomTemplateId));
+      setSelectedCustomTemplateId('');
+      if (!result.deleted) {
+        setFormulaEditorNotice('当前模板已不存在，列表已刷新。');
+        return;
+      }
+      setFormulaEditorNotice(deleting ? `已删除“我的公式”：${deleting.label}` : '已删除当前自定义公式');
+    } catch (error) {
+      setFormulaValidationError(getParsedApiError(error));
+    }
   };
 
   const applyOfficialTemplate = (templateValue: string) => {

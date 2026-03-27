@@ -4,6 +4,9 @@ import type {
   ScreenerBoardConstituentResponse,
   ScreenerBoardOption,
   ScreenerBoardPreview,
+  ScreenerFormulaTemplate,
+  ScreenerFormulaTemplateDeleteResponse,
+  ScreenerFormulaTemplateUpsertRequest,
   FormulaFunctionMeta,
   FormulaValidationResponse,
   ScreenerExportFormat,
@@ -54,6 +57,25 @@ export const screenerApi = {
   async getFormulaFunctions(): Promise<FormulaFunctionMeta[]> {
     const response = await apiClient.get('/api/v1/stocks/screener/formula/functions');
     return toCamelCase<FormulaFunctionMeta[]>(response.data);
+  },
+
+  async listFormulaTemplates(): Promise<ScreenerFormulaTemplate[]> {
+    const response = await apiClient.get('/api/v1/stocks/screener/formula/templates');
+    return toCamelCase<ScreenerFormulaTemplate[]>(response.data);
+  },
+
+  async upsertFormulaTemplate(payload: ScreenerFormulaTemplateUpsertRequest): Promise<ScreenerFormulaTemplate> {
+    const response = await apiClient.post('/api/v1/stocks/screener/formula/templates', {
+      id: payload.id,
+      label: payload.label,
+      value: payload.value,
+    });
+    return toCamelCase<ScreenerFormulaTemplate>(response.data);
+  },
+
+  async deleteFormulaTemplate(templateId: string): Promise<ScreenerFormulaTemplateDeleteResponse> {
+    const response = await apiClient.delete(`/api/v1/stocks/screener/formula/templates/${encodeURIComponent(templateId)}`);
+    return toCamelCase<ScreenerFormulaTemplateDeleteResponse>(response.data);
   },
 
   async validateFormula(formula: string): Promise<FormulaValidationResponse> {

@@ -849,6 +849,7 @@ class StockScreenerService:
 
     def __init__(self, manager=None):
         self._manager = manager
+        self._storage = None
         config = get_config()
         configured_scan_workers = int(getattr(config, "stock_screener_max_workers", 16) or 16)
         self._max_workers = max(1, min(configured_scan_workers, 32))
@@ -864,6 +865,13 @@ class StockScreenerService:
 
             self._manager = DataFetcherManager()
         return self._manager
+
+    def _get_storage(self):
+        if self._storage is None:
+            from src.storage import DatabaseManager
+
+            self._storage = DatabaseManager.get_instance()
+        return self._storage
 
     def _load_board_cache(self) -> Dict[str, Any]:
         return load_board_cache()
@@ -1026,6 +1034,23 @@ class StockScreenerService:
 
     def formula_function_catalog(self) -> List[FormulaFunctionMeta]:
         return self._formula_engine.list_functions()
+
+    def list_formula_templates(self) -> List[Dict[str, Any]]:
+        storage = self._get_storage()
+        return storage.list_screener_formula_templates(limit=200)
+
+    def upsert_formula_template(self, label: str, value: str, template_id: Optional[str] = None) -> Dict[str, Any]:
+        storage = self._get_storage()
+        return storage.upsert_screener_formula_template(
+            label=label,
+            value=value,
+            template_id=template_id,
+            keep_limit=200,
+        )
+
+    def delete_formula_template(self, template_id: str) -> bool:
+        storage = self._get_storage()
+        return storage.delete_screener_formula_template(template_id)
 
     def validate_formula(self, formula: str) -> FormulaValidationResponse:
         try:
