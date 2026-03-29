@@ -48,10 +48,10 @@ nvm use 22.14.0
 npm ci
 npm run build
 cd ../..
-
+# lqsmark
 WEBUI_AUTO_BUILD=false .venv/bin/python main.py --webui-only --host 127.0.0.1 --port 8000
 WEBUI_AUTO_BUILD=false python3 main.py --webui-only --host 127.0.0.1 --port 8000
-  PORT=8001 ./scripts/run_webui_with_logs.sh
+PORT=8001 ./scripts/run_webui_with_logs.sh
 ```
 
 说明：

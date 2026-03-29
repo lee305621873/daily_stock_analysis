@@ -1,0 +1,1814 @@
+{
+  "version": 1,
+  "updated_at": "2026-03-29T08:16:14.624943Z",
+  "months": [
+    "202603",
+    "202602",
+    "202601"
+  ],
+  "items_by_month": {
+    "202603": {
+      "month": "202603",
+      "broker_total": 14,
+      "total_picks": 108,
+      "row_count": 122,
+      "items": [
+        {
+          "ts_code": "300308.SZ",
+          "code": "300308",
+          "name": "中际旭创",
+          "market": "cn",
+          "broker_count": 4,
+          "brokers": [
+            "东方财富证券",
+            "光大证券",
+            "华创证券",
+            "华泰证券"
+          ],
+          "rank": 1
+        },
+        {
+          "ts_code": "603993.SH",
+          "code": "603993",
+          "name": "洛阳钼业",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "东方财富证券",
+            "平安证券",
+            "开源证券"
+          ],
+          "rank": 2
+        },
+        {
+          "ts_code": "002493.SZ",
+          "code": "002493",
+          "name": "荣盛石化",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "国金证券",
+            "平安证券"
+          ],
+          "rank": 3
+        },
+        {
+          "ts_code": "002624.SZ",
+          "code": "002624",
+          "name": "完美世界",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "华创证券",
+            "开源证券"
+          ],
+          "rank": 4
+        },
+        {
+          "ts_code": "002895.SZ",
+          "code": "002895",
+          "name": "川恒股份",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "光大证券",
+            "国信证券"
+          ],
+          "rank": 5
+        },
+        {
+          "ts_code": "300750.SZ",
+          "code": "300750",
+          "name": "宁德时代",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "华创证券",
+            "华福证券"
+          ],
+          "rank": 6
+        },
+        {
+          "ts_code": "600176.SH",
+          "code": "600176",
+          "name": "中国巨石",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "光大证券",
+            "平安证券"
+          ],
+          "rank": 7
+        },
+        {
+          "ts_code": "600690.SH",
+          "code": "600690",
+          "name": "海尔智家",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "光大证券",
+            "国信证券"
+          ],
+          "rank": 8
+        },
+        {
+          "ts_code": "601899.SH",
+          "code": "601899",
+          "name": "紫金矿业",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "华泰证券",
+            "华福证券"
+          ],
+          "rank": 9
+        },
+        {
+          "ts_code": "603225.SH",
+          "code": "603225",
+          "name": "新凤鸣",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "东方财富证券",
+            "开源证券"
+          ],
+          "rank": 10
+        },
+        {
+          "ts_code": "688041.SH",
+          "code": "688041",
+          "name": "海光信息",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "东方财富证券",
+            "平安证券"
+          ],
+          "rank": 11
+        },
+        {
+          "ts_code": "000039.SZ",
+          "code": "000039",
+          "name": "中集集团",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华泰证券"
+          ],
+          "rank": 12
+        },
+        {
+          "ts_code": "000338.SZ",
+          "code": "000338",
+          "name": "潍柴动力",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "西南证券"
+          ],
+          "rank": 13
+        },
+        {
+          "ts_code": "000408.SZ",
+          "code": "000408",
+          "name": "藏格矿业",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华福证券"
+          ],
+          "rank": 14
+        },
+        {
+          "ts_code": "000636.SZ",
+          "code": "000636",
+          "name": "风华高科",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东北证券"
+          ],
+          "rank": 15
+        },
+        {
+          "ts_code": "000708.SZ",
+          "code": "000708",
+          "name": "中信特钢",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华泰证券"
+          ],
+          "rank": 16
+        },
+        {
+          "ts_code": "000792.SZ",
+          "code": "000792",
+          "name": "盐湖股份",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华福证券"
+          ],
+          "rank": 17
+        },
+        {
+          "ts_code": "000801.SZ",
+          "code": "000801",
+          "name": "四川九洲",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中航证券"
+          ],
+          "rank": 18
+        },
+        {
+          "ts_code": "000807.SZ",
+          "code": "000807",
+          "name": "云铝股份",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国金证券"
+          ],
+          "rank": 19
+        },
+        {
+          "ts_code": "000932.SZ",
+          "code": "000932",
+          "name": "华菱钢铁",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "光大证券"
+          ],
+          "rank": 20
+        },
+        {
+          "ts_code": "000933.SZ",
+          "code": "000933",
+          "name": "神火股份",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "开源证券"
+          ],
+          "rank": 21
+        },
+        {
+          "ts_code": "001221.SZ",
+          "code": "001221",
+          "name": "悍高集团",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东北证券"
+          ],
+          "rank": 22
+        },
+        {
+          "ts_code": "001979.SZ",
+          "code": "001979",
+          "name": "招商蛇口",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "太平洋证券"
+          ],
+          "rank": 23
+        },
+        {
+          "ts_code": "002001.SZ",
+          "code": "002001",
+          "name": "新和成",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华泰证券"
+          ],
+          "rank": 24
+        },
+        {
+          "ts_code": "002019.SZ",
+          "code": "002019",
+          "name": "亿帆医药",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "西南证券"
+          ],
+          "rank": 25
+        },
+        {
+          "ts_code": "002078.SZ",
+          "code": "002078",
+          "name": "太阳纸业",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "光大证券"
+          ],
+          "rank": 26
+        },
+        {
+          "ts_code": "002230.SZ",
+          "code": "002230",
+          "name": "科大讯飞",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "光大证券"
+          ],
+          "rank": 27
+        },
+        {
+          "ts_code": "002271.SZ",
+          "code": "002271",
+          "name": "东方雨虹",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东方财富证券"
+          ],
+          "rank": 28
+        },
+        {
+          "ts_code": "002318.SZ",
+          "code": "002318",
+          "name": "久立特材",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华创证券"
+          ],
+          "rank": 29
+        },
+        {
+          "ts_code": "002353.SZ",
+          "code": "002353",
+          "name": "杰瑞股份",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "光大证券"
+          ],
+          "rank": 30
+        },
+        {
+          "ts_code": "002414.SZ",
+          "code": "002414",
+          "name": "高德红外",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华泰证券"
+          ],
+          "rank": 31
+        },
+        {
+          "ts_code": "002440.SZ",
+          "code": "002440",
+          "name": "闰土股份",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东北证券"
+          ],
+          "rank": 32
+        },
+        {
+          "ts_code": "002460.SZ",
+          "code": "002460",
+          "name": "赣锋锂业",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华福证券"
+          ],
+          "rank": 33
+        },
+        {
+          "ts_code": "002533.SZ",
+          "code": "002533",
+          "name": "金杯电工",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "平安证券"
+          ],
+          "rank": 34
+        },
+        {
+          "ts_code": "002594.SZ",
+          "code": "002594",
+          "name": "比亚迪",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中航证券"
+          ],
+          "rank": 35
+        },
+        {
+          "ts_code": "002772.SZ",
+          "code": "002772",
+          "name": "众兴菌业",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "西南证券"
+          ],
+          "rank": 36
+        },
+        {
+          "ts_code": "002946.SZ",
+          "code": "002946",
+          "name": "新乳业",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华西证券"
+          ],
+          "rank": 37
+        },
+        {
+          "ts_code": "300003.SZ",
+          "code": "300003",
+          "name": "乐普医疗",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东方财富证券"
+          ],
+          "rank": 38
+        },
+        {
+          "ts_code": "300014.SZ",
+          "code": "300014",
+          "name": "亿纬锂能",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中航证券"
+          ],
+          "rank": 39
+        },
+        {
+          "ts_code": "300223.SZ",
+          "code": "300223",
+          "name": "北京君正",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "平安证券"
+          ],
+          "rank": 40
+        },
+        {
+          "ts_code": "300394.SZ",
+          "code": "300394",
+          "name": "天孚通信",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "平安证券"
+          ],
+          "rank": 41
+        },
+        {
+          "ts_code": "300666.SZ",
+          "code": "300666",
+          "name": "江丰电子",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "开源证券"
+          ],
+          "rank": 42
+        },
+        {
+          "ts_code": "300693.SZ",
+          "code": "300693",
+          "name": "盛弘股份",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "光大证券"
+          ],
+          "rank": 43
+        },
+        {
+          "ts_code": "300761.SZ",
+          "code": "300761",
+          "name": "立华股份",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华西证券"
+          ],
+          "rank": 44
+        },
+        {
+          "ts_code": "300806.SZ",
+          "code": "300806",
+          "name": "斯迪克",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东北证券"
+          ],
+          "rank": 45
+        },
+        {
+          "ts_code": "300857.SZ",
+          "code": "300857",
+          "name": "协创数据",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华创证券"
+          ],
+          "rank": 46
+        },
+        {
+          "ts_code": "300943.SZ",
+          "code": "300943",
+          "name": "春晖智控",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东北证券"
+          ],
+          "rank": 47
+        },
+        {
+          "ts_code": "300945.SZ",
+          "code": "300945",
+          "name": "曼卡龙",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中航证券"
+          ],
+          "rank": 48
+        },
+        {
+          "ts_code": "300970.SZ",
+          "code": "300970",
+          "name": "华绿生物",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东北证券"
+          ],
+          "rank": 49
+        },
+        {
+          "ts_code": "301338.SZ",
+          "code": "301338",
+          "name": "凯格精机",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华创证券"
+          ],
+          "rank": 50
+        }
+      ]
+    },
+    "202602": {
+      "month": "202602",
+      "broker_total": 37,
+      "total_picks": 239,
+      "row_count": 348,
+      "items": [
+        {
+          "ts_code": "300308.SZ",
+          "code": "300308",
+          "name": "中际旭创",
+          "market": "cn",
+          "broker_count": 8,
+          "brokers": [
+            "光大证券",
+            "华创证券",
+            "华泰证券",
+            "华龙证券",
+            "国泰海通",
+            "天风证券",
+            "招商证券",
+            "长江证券"
+          ],
+          "rank": 1
+        },
+        {
+          "ts_code": "601318.SH",
+          "code": "601318",
+          "name": "中国平安",
+          "market": "cn",
+          "broker_count": 7,
+          "brokers": [
+            "东吴证券",
+            "华创证券",
+            "华泰证券",
+            "国信证券",
+            "国投证券",
+            "国泰海通",
+            "国联民生"
+          ],
+          "rank": 2
+        },
+        {
+          "ts_code": "600309.SH",
+          "code": "600309",
+          "name": "万华化学",
+          "market": "cn",
+          "broker_count": 6,
+          "brokers": [
+            "东吴证券",
+            "中泰证券",
+            "光大证券",
+            "天风证券",
+            "太平洋",
+            "长城证券"
+          ],
+          "rank": 3
+        },
+        {
+          "ts_code": "688041.SH",
+          "code": "688041",
+          "name": "海光信息",
+          "market": "cn",
+          "broker_count": 6,
+          "brokers": [
+            "东海证券",
+            "兴业证券",
+            "国泰海通",
+            "国盛证券",
+            "天风证券",
+            "平安证券"
+          ],
+          "rank": 4
+        },
+        {
+          "ts_code": "600519.SH",
+          "code": "600519",
+          "name": "贵州茅台",
+          "market": "cn",
+          "broker_count": 5,
+          "brokers": [
+            "东北证券",
+            "华创证券",
+            "国联民生",
+            "天风证券",
+            "申万宏源"
+          ],
+          "rank": 5
+        },
+        {
+          "ts_code": "601899.SH",
+          "code": "601899",
+          "name": "紫金矿业",
+          "market": "cn",
+          "broker_count": 5,
+          "brokers": [
+            "中国银河",
+            "光大证券",
+            "华泰证券",
+            "华龙证券",
+            "天风证券"
+          ],
+          "rank": 6
+        },
+        {
+          "ts_code": "002517.SZ",
+          "code": "002517",
+          "name": "恺英网络",
+          "market": "cn",
+          "broker_count": 4,
+          "brokers": [
+            "华金证券",
+            "华龙证券",
+            "国元证券",
+            "太平洋"
+          ],
+          "rank": 7
+        },
+        {
+          "ts_code": "600415.SH",
+          "code": "600415",
+          "name": "小商品城",
+          "market": "cn",
+          "broker_count": 4,
+          "brokers": [
+            "华龙证券",
+            "国盛证券",
+            "天风证券",
+            "太平洋"
+          ],
+          "rank": 8
+        },
+        {
+          "ts_code": "601888.SH",
+          "code": "601888",
+          "name": "中国中免",
+          "market": "cn",
+          "broker_count": 4,
+          "brokers": [
+            "兴业证券",
+            "国盛证券",
+            "国金证券",
+            "平安证券"
+          ],
+          "rank": 9
+        },
+        {
+          "ts_code": "002142.SZ",
+          "code": "002142",
+          "name": "宁波银行",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "东海证券",
+            "国泰海通",
+            "财信证券"
+          ],
+          "rank": 10
+        },
+        {
+          "ts_code": "300394.SZ",
+          "code": "300394",
+          "name": "天孚通信",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "东吴证券",
+            "华鑫证券",
+            "长城证券"
+          ],
+          "rank": 11
+        },
+        {
+          "ts_code": "301413.SZ",
+          "code": "301413",
+          "name": "安培龙",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "光大证券",
+            "华源证券",
+            "国泰海通"
+          ],
+          "rank": 12
+        },
+        {
+          "ts_code": "600036.SH",
+          "code": "600036",
+          "name": "招商银行",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "中国银河",
+            "国信证券",
+            "国投证券"
+          ],
+          "rank": 13
+        },
+        {
+          "ts_code": "600160.SH",
+          "code": "600160",
+          "name": "巨化股份",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "开源证券",
+            "西部证券",
+            "长江证券"
+          ],
+          "rank": 14
+        },
+        {
+          "ts_code": "600176.SH",
+          "code": "600176",
+          "name": "中国巨石",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "华泰证券",
+            "华源证券",
+            "国投证券"
+          ],
+          "rank": 15
+        },
+        {
+          "ts_code": "601233.SH",
+          "code": "601233",
+          "name": "桐昆股份",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "兴业证券",
+            "华龙证券",
+            "财信证券"
+          ],
+          "rank": 16
+        },
+        {
+          "ts_code": "601336.SH",
+          "code": "601336",
+          "name": "新华保险",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "天风证券",
+            "西部证券",
+            "长江证券"
+          ],
+          "rank": 17
+        },
+        {
+          "ts_code": "601601.SH",
+          "code": "601601",
+          "name": "中国太保",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "中泰证券",
+            "太平洋",
+            "平安证券"
+          ],
+          "rank": 18
+        },
+        {
+          "ts_code": "601689.SH",
+          "code": "601689",
+          "name": "拓普集团",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "东海证券",
+            "华金证券",
+            "长江证券"
+          ],
+          "rank": 19
+        },
+        {
+          "ts_code": "603259.SH",
+          "code": "603259",
+          "name": "药明康德",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "天风证券",
+            "开源证券",
+            "海通国际"
+          ],
+          "rank": 20
+        },
+        {
+          "ts_code": "603806.SH",
+          "code": "603806",
+          "name": "福斯特",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "中原证券",
+            "申万宏源",
+            "西部证券"
+          ],
+          "rank": 21
+        },
+        {
+          "ts_code": "603986.SH",
+          "code": "603986",
+          "name": "兆易创新",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "中原证券",
+            "中国银河",
+            "中航证券"
+          ],
+          "rank": 22
+        },
+        {
+          "ts_code": "603993.SH",
+          "code": "603993",
+          "name": "洛阳钼业",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "平安证券",
+            "开源证券",
+            "浙商证券"
+          ],
+          "rank": 23
+        },
+        {
+          "ts_code": "688630.SH",
+          "code": "688630",
+          "name": "芯碁微装",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "东北证券",
+            "东吴证券",
+            "天风证券"
+          ],
+          "rank": 24
+        },
+        {
+          "ts_code": "000786.SZ",
+          "code": "000786",
+          "name": "北新建材",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "中泰证券",
+            "平安证券"
+          ],
+          "rank": 25
+        },
+        {
+          "ts_code": "000893.SZ",
+          "code": "000893",
+          "name": "亚钾国际",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "中国银河",
+            "华金证券"
+          ],
+          "rank": 26
+        },
+        {
+          "ts_code": "001979.SZ",
+          "code": "001979",
+          "name": "招商蛇口",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "华源证券",
+            "国泰海通"
+          ],
+          "rank": 27
+        },
+        {
+          "ts_code": "002353.SZ",
+          "code": "002353",
+          "name": "杰瑞股份",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "东海证券",
+            "光大证券"
+          ],
+          "rank": 28
+        },
+        {
+          "ts_code": "002463.SZ",
+          "code": "002463",
+          "name": "沪电股份",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "兴业证券",
+            "太平洋"
+          ],
+          "rank": 29
+        },
+        {
+          "ts_code": "002475.SZ",
+          "code": "002475",
+          "name": "立讯精密",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "华鑫证券",
+            "招商证券"
+          ],
+          "rank": 30
+        },
+        {
+          "ts_code": "002602.SZ",
+          "code": "002602",
+          "name": "世纪华通",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "国海证券",
+            "招商证券"
+          ],
+          "rank": 31
+        },
+        {
+          "ts_code": "002714.SZ",
+          "code": "002714",
+          "name": "牧原股份",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "中航证券",
+            "华鑫证券"
+          ],
+          "rank": 32
+        },
+        {
+          "ts_code": "002738.SZ",
+          "code": "002738",
+          "name": "中矿资源",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "华鑫证券",
+            "西部证券"
+          ],
+          "rank": 33
+        },
+        {
+          "ts_code": "002837.SZ",
+          "code": "002837",
+          "name": "英维克",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "国投证券",
+            "太平洋"
+          ],
+          "rank": 34
+        },
+        {
+          "ts_code": "002991.SZ",
+          "code": "002991",
+          "name": "甘源食品",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "东兴证券",
+            "开源证券"
+          ],
+          "rank": 35
+        },
+        {
+          "ts_code": "300033.SZ",
+          "code": "300033",
+          "name": "同花顺",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "国盛证券",
+            "长城证券"
+          ],
+          "rank": 36
+        },
+        {
+          "ts_code": "300442.SZ",
+          "code": "300442",
+          "name": "润泽科技",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "中原证券",
+            "国投证券"
+          ],
+          "rank": 37
+        },
+        {
+          "ts_code": "300502.SZ",
+          "code": "300502",
+          "name": "新易盛",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "天风证券",
+            "招商证券"
+          ],
+          "rank": 38
+        },
+        {
+          "ts_code": "300680.SZ",
+          "code": "300680",
+          "name": "隆盛科技",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "华龙证券",
+            "申万宏源"
+          ],
+          "rank": 39
+        },
+        {
+          "ts_code": "300750.SZ",
+          "code": "300750",
+          "name": "宁德时代",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "国联民生",
+            "长城证券"
+          ],
+          "rank": 40
+        },
+        {
+          "ts_code": "300776.SZ",
+          "code": "300776",
+          "name": "帝尔激光",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "申万宏源",
+            "长江证券"
+          ],
+          "rank": 41
+        },
+        {
+          "ts_code": "600060.SH",
+          "code": "600060",
+          "name": "海信视像",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "兴业证券",
+            "天风证券"
+          ],
+          "rank": 42
+        },
+        {
+          "ts_code": "600346.SH",
+          "code": "600346",
+          "name": "恒力石化",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "东海证券",
+            "长城证券"
+          ],
+          "rank": 43
+        },
+        {
+          "ts_code": "600418.SH",
+          "code": "600418",
+          "name": "江淮汽车",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "招商证券",
+            "财通证券"
+          ],
+          "rank": 44
+        },
+        {
+          "ts_code": "600547.SH",
+          "code": "600547",
+          "name": "山东黄金",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "国海证券",
+            "长江证券"
+          ],
+          "rank": 45
+        },
+        {
+          "ts_code": "600690.SH",
+          "code": "600690",
+          "name": "海尔智家",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "国信证券",
+            "海通国际"
+          ],
+          "rank": 46
+        },
+        {
+          "ts_code": "600985.SH",
+          "code": "600985",
+          "name": "淮北矿业",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "中泰证券",
+            "浙商证券"
+          ],
+          "rank": 47
+        },
+        {
+          "ts_code": "601100.SH",
+          "code": "601100",
+          "name": "恒立液压",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "东海证券",
+            "华龙证券"
+          ],
+          "rank": 48
+        },
+        {
+          "ts_code": "601600.SH",
+          "code": "601600",
+          "name": "中国铝业",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "国信证券",
+            "国盛证券"
+          ],
+          "rank": 49
+        },
+        {
+          "ts_code": "601628.SH",
+          "code": "601628",
+          "name": "中国人寿",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "光大证券",
+            "华源证券"
+          ],
+          "rank": 50
+        }
+      ]
+    },
+    "202601": {
+      "month": "202601",
+      "broker_total": 11,
+      "total_picks": 88,
+      "row_count": 102,
+      "items": [
+        {
+          "ts_code": "300308.SZ",
+          "code": "300308",
+          "name": "中际旭创",
+          "market": "cn",
+          "broker_count": 4,
+          "brokers": [
+            "中国银河",
+            "光大证券",
+            "华泰证券",
+            "国联民生"
+          ],
+          "rank": 1
+        },
+        {
+          "ts_code": "601888.SH",
+          "code": "601888",
+          "name": "中国中免",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "中国银河",
+            "中泰证券",
+            "国信证券"
+          ],
+          "rank": 2
+        },
+        {
+          "ts_code": "601899.SH",
+          "code": "601899",
+          "name": "紫金矿业",
+          "market": "cn",
+          "broker_count": 3,
+          "brokers": [
+            "中国银河",
+            "光大证券",
+            "国信证券"
+          ],
+          "rank": 3
+        },
+        {
+          "ts_code": "002050.SZ",
+          "code": "002050",
+          "name": "三花智控",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "中国银河",
+            "海通国际"
+          ],
+          "rank": 4
+        },
+        {
+          "ts_code": "600690.SH",
+          "code": "600690",
+          "name": "海尔智家",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "光大证券",
+            "海通国际"
+          ],
+          "rank": 5
+        },
+        {
+          "ts_code": "601601.SH",
+          "code": "601601",
+          "name": "中国太保",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "中泰证券",
+            "平安证券"
+          ],
+          "rank": 6
+        },
+        {
+          "ts_code": "688041.SH",
+          "code": "688041",
+          "name": "海光信息",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "中原证券",
+            "平安证券"
+          ],
+          "rank": 7
+        },
+        {
+          "ts_code": "688127.SH",
+          "code": "688127",
+          "name": "蓝特光学",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "国信证券",
+            "国金证券"
+          ],
+          "rank": 8
+        },
+        {
+          "ts_code": "688208.SH",
+          "code": "688208",
+          "name": "道通科技",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "平安证券",
+            "海通国际"
+          ],
+          "rank": 9
+        },
+        {
+          "ts_code": "688278.SH",
+          "code": "688278",
+          "name": "特宝生物",
+          "market": "cn",
+          "broker_count": 2,
+          "brokers": [
+            "东海证券",
+            "国金证券"
+          ],
+          "rank": 10
+        },
+        {
+          "ts_code": "000333.SZ",
+          "code": "000333",
+          "name": "美的集团",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国联民生"
+          ],
+          "rank": 11
+        },
+        {
+          "ts_code": "000498.SZ",
+          "code": "000498",
+          "name": "山东路桥",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中泰证券"
+          ],
+          "rank": 12
+        },
+        {
+          "ts_code": "000528.SZ",
+          "code": "000528",
+          "name": "柳工",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中国银河"
+          ],
+          "rank": 13
+        },
+        {
+          "ts_code": "000708.SZ",
+          "code": "000708",
+          "name": "中信特钢",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华泰证券"
+          ],
+          "rank": 14
+        },
+        {
+          "ts_code": "000807.SZ",
+          "code": "000807",
+          "name": "云铝股份",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国金证券"
+          ],
+          "rank": 15
+        },
+        {
+          "ts_code": "000893.SZ",
+          "code": "000893",
+          "name": "亚钾国际",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中国银河"
+          ],
+          "rank": 16
+        },
+        {
+          "ts_code": "000923.SZ",
+          "code": "000923",
+          "name": "河钢资源",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中泰证券"
+          ],
+          "rank": 17
+        },
+        {
+          "ts_code": "000933.SZ",
+          "code": "000933",
+          "name": "神火股份",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华泰证券"
+          ],
+          "rank": 18
+        },
+        {
+          "ts_code": "002078.SZ",
+          "code": "002078",
+          "name": "太阳纸业",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国信证券"
+          ],
+          "rank": 19
+        },
+        {
+          "ts_code": "002080.SZ",
+          "code": "002080",
+          "name": "中材科技",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中泰证券"
+          ],
+          "rank": 20
+        },
+        {
+          "ts_code": "002128.SZ",
+          "code": "002128",
+          "name": "电投能源",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中国银河"
+          ],
+          "rank": 21
+        },
+        {
+          "ts_code": "002138.SZ",
+          "code": "002138",
+          "name": "顺络电子",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "光大证券"
+          ],
+          "rank": 22
+        },
+        {
+          "ts_code": "002202.SZ",
+          "code": "002202",
+          "name": "金风科技",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "平安证券"
+          ],
+          "rank": 23
+        },
+        {
+          "ts_code": "002353.SZ",
+          "code": "002353",
+          "name": "杰瑞股份",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东海证券"
+          ],
+          "rank": 24
+        },
+        {
+          "ts_code": "002648.SZ",
+          "code": "002648",
+          "name": "卫星化学",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东海证券"
+          ],
+          "rank": 25
+        },
+        {
+          "ts_code": "002709.SZ",
+          "code": "002709",
+          "name": "天赐材料",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中原证券"
+          ],
+          "rank": 26
+        },
+        {
+          "ts_code": "002714.SZ",
+          "code": "002714",
+          "name": "牧原股份",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中原证券"
+          ],
+          "rank": 27
+        },
+        {
+          "ts_code": "002946.SZ",
+          "code": "002946",
+          "name": "新乳业",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东海证券"
+          ],
+          "rank": 28
+        },
+        {
+          "ts_code": "002984.SZ",
+          "code": "002984",
+          "name": "森麒麟",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国联民生"
+          ],
+          "rank": 29
+        },
+        {
+          "ts_code": "003021.SZ",
+          "code": "003021",
+          "name": "兆威机电",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中原证券"
+          ],
+          "rank": 30
+        },
+        {
+          "ts_code": "003816.SZ",
+          "code": "003816",
+          "name": "中国广核",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国信证券"
+          ],
+          "rank": 31
+        },
+        {
+          "ts_code": "300223.SZ",
+          "code": "300223",
+          "name": "北京君正",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "平安证券"
+          ],
+          "rank": 32
+        },
+        {
+          "ts_code": "300274.SZ",
+          "code": "300274",
+          "name": "阳光电源",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国联民生"
+          ],
+          "rank": 33
+        },
+        {
+          "ts_code": "300438.SZ",
+          "code": "300438",
+          "name": "鹏辉能源",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "平安证券"
+          ],
+          "rank": 34
+        },
+        {
+          "ts_code": "300502.SZ",
+          "code": "300502",
+          "name": "新易盛",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "光大证券"
+          ],
+          "rank": 35
+        },
+        {
+          "ts_code": "300699.SZ",
+          "code": "300699",
+          "name": "光威复材",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国联民生"
+          ],
+          "rank": 36
+        },
+        {
+          "ts_code": "300900.SZ",
+          "code": "300900",
+          "name": "广联航空",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中泰证券"
+          ],
+          "rank": 37
+        },
+        {
+          "ts_code": "301231.SZ",
+          "code": "301231",
+          "name": "荣信文化",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中泰证券"
+          ],
+          "rank": 38
+        },
+        {
+          "ts_code": "301396.SZ",
+          "code": "301396",
+          "name": "宏景科技",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国联民生"
+          ],
+          "rank": 39
+        },
+        {
+          "ts_code": "600028.SH",
+          "code": "600028",
+          "name": "中国石化",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "光大证券"
+          ],
+          "rank": 40
+        },
+        {
+          "ts_code": "600031.SH",
+          "code": "600031",
+          "name": "三一重工",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "华泰证券"
+          ],
+          "rank": 41
+        },
+        {
+          "ts_code": "600115.SH",
+          "code": "600115",
+          "name": "中国东航",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中泰证券"
+          ],
+          "rank": 42
+        },
+        {
+          "ts_code": "600143.SH",
+          "code": "600143",
+          "name": "金发科技",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东海证券"
+          ],
+          "rank": 43
+        },
+        {
+          "ts_code": "600183.SH",
+          "code": "600183",
+          "name": "生益科技",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国金证券"
+          ],
+          "rank": 44
+        },
+        {
+          "ts_code": "600258.SH",
+          "code": "600258",
+          "name": "首旅酒店",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国联民生"
+          ],
+          "rank": 45
+        },
+        {
+          "ts_code": "600309.SH",
+          "code": "600309",
+          "name": "万华化学",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "中泰证券"
+          ],
+          "rank": 46
+        },
+        {
+          "ts_code": "600346.SH",
+          "code": "600346",
+          "name": "恒力石化",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "东海证券"
+          ],
+          "rank": 47
+        },
+        {
+          "ts_code": "600711.SH",
+          "code": "600711",
+          "name": "盛屯矿业",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "国联民生"
+          ],
+          "rank": 48
+        },
+        {
+          "ts_code": "600801.SH",
+          "code": "600801",
+          "name": "华新建材",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "平安证券"
+          ],
+          "rank": 49
+        },
+        {
+          "ts_code": "600848.SH",
+          "code": "600848",
+          "name": "上海临港",
+          "market": "cn",
+          "broker_count": 1,
+          "brokers": [
+            "光大证券"
+          ],
+          "rank": 50
+        }
+      ]
+    }
+  },
+  "meta": {
+    "source": "tushare.broker_recommend",
+    "top_per_month": 50,
+    "history_months": 3
+  }
+}

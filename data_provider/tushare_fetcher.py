@@ -127,14 +127,13 @@ class TushareFetcher(BaseFetcher):
             
             # Set Token
             ts.set_token(config.tushare_token)
-            
+
             # Get API instance
-            self._api = ts.pro_api()
-            
-            # Fix: tushare SDK 1.4.x hardcodes api.waditu.com/dataapi which may
-            # be unavailable (503). Monkey-patch the query method to use the
-            # official api.tushare.pro endpoint which posts to root URL.
-            self._patch_api_endpoint(config.tushare_token)
+            self._api = ts.pro_api(config.tushare_token)
+
+            # Some trial/proxy deployments require writing token and base URL
+            # back into the private DataApi fields explicitly.
+            self._patch_api_endpoint(config.tushare_token, config.tushare_api_url)
 
             logger.info("Tushare API 初始化成功")
             
@@ -142,20 +141,24 @@ class TushareFetcher(BaseFetcher):
             logger.error(f"Tushare API 初始化失败: {e}")
             self._api = None
 
-    def _patch_api_endpoint(self, token: str) -> None:
+    def _patch_api_endpoint(self, token: str, api_url: str) -> None:
         """
-        Patch tushare SDK to use the official api.tushare.pro endpoint.
+        Patch tushare SDK to use the configured Tushare endpoint.
 
         The SDK (v1.4.x) hardcodes http://api.waditu.com/dataapi and appends
         /{api_name} to the URL. That endpoint may return 503, causing silent
         empty-DataFrame failures. This method replaces the query method to
-        POST directly to http://api.tushare.pro (root URL, no path suffix).
+        POST directly to the configured root URL (no path suffix), and also
+        writes the private SDK fields required by some trial/proxy endpoints.
         """
         import types
 
-        TUSHARE_API_URL = "http://api.tushare.pro"
+        resolved_api_url = (api_url or "http://api.tushare.pro").strip().rstrip("/")
         _token = token
         _timeout = getattr(self._api, '_DataApi__timeout', 30)
+
+        setattr(self._api, "_DataApi__token", _token)
+        setattr(self._api, "_DataApi__http_url", resolved_api_url)
 
         def patched_query(self_api, api_name, fields='', **kwargs):
             req_params = {
@@ -164,7 +167,7 @@ class TushareFetcher(BaseFetcher):
                 'params': kwargs,
                 'fields': fields,
             }
-            res = requests.post(TUSHARE_API_URL, json=req_params, timeout=_timeout)
+            res = requests.post(resolved_api_url, json=req_params, timeout=_timeout)
             if res.status_code != 200:
                 raise Exception(f"Tushare API HTTP {res.status_code}")
             result = _json.loads(res.text)
@@ -176,7 +179,7 @@ class TushareFetcher(BaseFetcher):
             return pd.DataFrame(items, columns=columns)
 
         self._api.query = types.MethodType(patched_query, self._api)
-        logger.debug(f"Tushare API endpoint patched to {TUSHARE_API_URL}")
+        logger.debug("Tushare API endpoint patched to %s", resolved_api_url)
 
     def _determine_priority(self) -> int:
         """

@@ -113,6 +113,50 @@ class StockHistoryResponse(BaseModel):
         }
 
 
+class BrokerRecommendationItem(BaseModel):
+    """单只月度金股聚合结果。"""
+
+    rank: int = Field(..., description="按券商覆盖数排序后的名次")
+    code: str = Field(..., description="展示用股票代码")
+    ts_code: str = Field(..., description="Tushare 股票代码")
+    name: Optional[str] = Field(None, description="股票名称")
+    market: str = Field(..., description="市场：cn/hk/us")
+    broker_count: int = Field(..., description="覆盖该股票的券商数量")
+    brokers: List[str] = Field(default_factory=list, description="券商名称列表")
+
+
+class BrokerRecommendationBrokerPick(BaseModel):
+    """单家券商名下的一只推荐股。"""
+
+    rank: int = Field(..., description="该股票在按股票聚合视图中的名次")
+    code: str = Field(..., description="展示用股票代码")
+    ts_code: str = Field(..., description="Tushare 股票代码")
+    name: Optional[str] = Field(None, description="股票名称")
+    market: str = Field(..., description="市场：cn/hk/us")
+    broker_count: int = Field(..., description="该股票被多少家券商共同推荐")
+
+
+class BrokerRecommendationBrokerItem(BaseModel):
+    """单家券商的月度推荐聚合结果。"""
+
+    rank: int = Field(..., description="按荐股数量排序后的名次")
+    broker: str = Field(..., description="券商名称")
+    pick_count: int = Field(..., description="该券商当月推荐股票数")
+    picks: List[BrokerRecommendationBrokerPick] = Field(default_factory=list, description="该券商推荐的股票列表")
+
+
+class BrokerRecommendationResponse(BaseModel):
+    """券商月度金股聚合响应。"""
+
+    month: Optional[str] = Field(None, description="月份，格式 YYYYMM")
+    updated_at: Optional[str] = Field(None, description="本地缓存更新时间")
+    available_months: List[str] = Field(default_factory=list, description="已缓存月份列表")
+    broker_total: int = Field(0, description="当月覆盖券商数")
+    total_picks: int = Field(0, description="当月聚合后的股票数")
+    items: List[BrokerRecommendationItem] = Field(default_factory=list, description="按券商覆盖数排序后的股票列表")
+    brokers: List[BrokerRecommendationBrokerItem] = Field(default_factory=list, description="按荐股数量排序后的券商列表")
+
+
 class IndicatorKey(str, Enum):
     MA = "MA"
     MACD = "MACD"

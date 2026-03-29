@@ -1,18 +1,22 @@
 import type React from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiErrorAlert, ConfirmDialog } from '../components/common';
-import { getParsedApiError } from '../api/error';
+import { ApiErrorAlert, Badge, Card, ConfirmDialog } from '../components/common';
+import { createParsedApiError, getParsedApiError } from '../api/error';
 import type { HistoryItem, AnalysisReport, TaskInfo } from '../types/analysis';
 import { historyApi } from '../api/history';
 import { analysisApi, DuplicateTaskError } from '../api/analysis';
+import { stocksApi, type BrokerRecommendationResponse } from '../api/stocks';
 import { validateStockCode } from '../utils/validation';
-import { getRecentStartDate, getTodayInShanghai } from '../utils/format';
+import { formatDateTime, getRecentStartDate, getTodayInShanghai } from '../utils/format';
 import { useAnalysisStore } from '../stores/analysisStore';
 import { ReportSummary, ReportMarkdown } from '../components/report';
 import { HistoryList } from '../components/history';
 import { TaskPanel } from '../components/tasks';
 import { useTaskStream } from '../hooks';
+
+const BROKER_PICK_PREVIEW_LIMIT = 8;
+const BROKER_PICK_AUTO_EXPAND_LIMIT = 10;
 
 /**
  * Home Page - Single Page Design
@@ -53,6 +57,13 @@ const HomePage: React.FC = () => {
 
   // Markdown report drawer state
   const [showMarkdownDrawer, setShowMarkdownDrawer] = useState(false);
+  const [brokerRecommendations, setBrokerRecommendations] = useState<BrokerRecommendationResponse | null>(null);
+  const [selectedBrokerMonth, setSelectedBrokerMonth] = useState('');
+  const [brokerRecommendationView, setBrokerRecommendationView] = useState<'stock' | 'broker'>('stock');
+  const [isLoadingBrokerRecommendations, setIsLoadingBrokerRecommendations] = useState(false);
+  const [isRefreshingBrokerRecommendations, setIsRefreshingBrokerRecommendations] = useState(false);
+  const [brokerRecommendationError, setBrokerRecommendationError] = useState<string | null>(null);
+  const [expandedBrokerCards, setExpandedBrokerCards] = useState<Record<string, boolean>>({});
 
   // Used to track the current analysis request to avoid race conditions
   const analysisRequestIdRef = useRef<number>(0);
@@ -303,6 +314,59 @@ const HomePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    const fetchBrokerRecommendations = async () => {
+      setIsLoadingBrokerRecommendations(true);
+      try {
+        const response = await stocksApi.getBrokerRecommendations(selectedBrokerMonth || undefined, 8);
+        if (!active) return;
+        setBrokerRecommendations(response);
+        setExpandedBrokerCards({});
+        setBrokerRecommendationError(null);
+      } catch (err) {
+        if (!active) return;
+        console.error('Failed to fetch broker recommendations:', err);
+        setBrokerRecommendationError(getParsedApiError(err).message || '加载券商月度金股失败');
+      } finally {
+        if (active) {
+          setIsLoadingBrokerRecommendations(false);
+        }
+      }
+    };
+
+    fetchBrokerRecommendations();
+    return () => {
+      active = false;
+    };
+  }, [selectedBrokerMonth]);
+
+  const handleRefreshBrokerRecommendations = useCallback(async () => {
+    setIsRefreshingBrokerRecommendations(true);
+    try {
+      const response = await stocksApi.refreshBrokerRecommendations(selectedBrokerMonth || undefined, 3, 50, 8);
+      setBrokerRecommendations(response);
+      setExpandedBrokerCards({});
+      if (!selectedBrokerMonth && response.month) {
+        setSelectedBrokerMonth(response.month);
+      }
+      setBrokerRecommendationError(null);
+    } catch (err) {
+      console.error('Failed to refresh broker recommendations:', err);
+      setBrokerRecommendationError(getParsedApiError(err).message || '刷新券商月度金股失败');
+    } finally {
+      setIsRefreshingBrokerRecommendations(false);
+    }
+  }, [selectedBrokerMonth]);
+
+  const toggleBrokerCard = useCallback((broker: string) => {
+    setExpandedBrokerCards((prev) => ({
+      ...prev,
+      [broker]: !prev[broker],
+    }));
+  }, []);
+
   // Click history item to load report
   const handleHistoryClick = async (recordId: number) => {
     // Increment request ID to cancel any in-flight auto-select result.
@@ -324,11 +388,18 @@ const HomePage: React.FC = () => {
     }
   };
 
-  // Analyze stock (async mode)
-  const handleAnalyze = async () => {
-    const { valid, message, normalized } = validateStockCode(stockCode);
+  const submitAnalysis = useCallback(async (rawStockCode: string) => {
+    const { valid, message, normalized } = validateStockCode(rawStockCode);
     if (!valid) {
-      setInputError(message);
+      if (rawStockCode === stockCode) {
+        setInputError(message);
+      } else {
+        setStoreError(createParsedApiError({
+          title: '股票代码不合法',
+          message: message || '股票代码格式不正确',
+          category: 'unknown',
+        }));
+      }
       return;
     }
 
@@ -342,18 +413,17 @@ const HomePage: React.FC = () => {
     const currentRequestId = ++analysisRequestIdRef.current;
 
     try {
-      // Submit analysis using async mode
       const response = await analysisApi.analyzeAsync({
         stockCode: normalized,
         reportType: 'detailed',
       });
 
-      // Clear input box
       if (currentRequestId === analysisRequestIdRef.current) {
-        setStockCode('');
+        if (rawStockCode === stockCode) {
+          setStockCode('');
+        }
       }
 
-      // Task submitted, SSE will push updates
       if ('taskId' in response) {
         console.log('Task submitted:', response.taskId);
       } else {
@@ -373,6 +443,11 @@ const HomePage: React.FC = () => {
       setIsAnalyzing(false);
       setLoading(false);
     }
+  }, [setStoreError, setLoading, stockCode]);
+
+  // Analyze stock (async mode)
+  const handleAnalyze = async () => {
+    await submitAnalysis(stockCode);
   };
 
   // Submit on Enter key
@@ -484,6 +559,187 @@ const HomePage: React.FC = () => {
 
       {/* Right Report Detail */}
       <section className="md:col-start-4 md:row-start-2 flex-1 overflow-y-auto overflow-x-auto px-3 md:px-0 md:pl-1 min-w-0 min-h-0">
+        <Card
+          title="券商月度金股"
+          subtitle="Tushare Broker Recommend"
+          className="mb-4"
+        >
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="info">月份 {brokerRecommendations?.month || '—'}</Badge>
+                <Badge variant="warning">券商 {brokerRecommendations?.brokerTotal ?? 0} 家</Badge>
+                <Badge variant="success">入选 {brokerRecommendations?.totalPicks ?? 0} 只</Badge>
+                <div className="ml-0 flex items-center gap-1 rounded-full border border-white/10 bg-card/60 p-1 md:ml-2">
+                  <button
+                    type="button"
+                    onClick={() => setBrokerRecommendationView('stock')}
+                    className={`rounded-full px-3 py-1 text-xs transition-colors ${brokerRecommendationView === 'stock' ? 'bg-cyan/15 text-cyan' : 'text-secondary-text hover:text-white'}`}
+                  >
+                    按股票
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBrokerRecommendationView('broker')}
+                    className={`rounded-full px-3 py-1 text-xs transition-colors ${brokerRecommendationView === 'broker' ? 'bg-cyan/15 text-cyan' : 'text-secondary-text hover:text-white'}`}
+                  >
+                    按券商
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {brokerRecommendations?.availableMonths?.length ? (
+                  <select
+                    value={selectedBrokerMonth || brokerRecommendations.month || ''}
+                    onChange={(event) => setSelectedBrokerMonth(event.target.value)}
+                    className="h-10 min-w-[140px] rounded-xl border border-white/10 bg-card px-3 text-sm text-foreground"
+                  >
+                    {brokerRecommendations.availableMonths.map((month) => (
+                      <option key={month} value={month}>
+                        {month}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleRefreshBrokerRecommendations}
+                  disabled={isRefreshingBrokerRecommendations}
+                  className="rounded-xl border border-cyan/20 bg-cyan/10 px-3 py-2 text-sm text-cyan transition-colors hover:bg-cyan/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isRefreshingBrokerRecommendations ? '刷新中...' : '立即刷新'}
+                </button>
+              </div>
+            </div>
+
+            <div className="text-xs text-secondary-text">
+              {brokerRecommendations?.updatedAt
+                ? `缓存更新时间：${formatDateTime(brokerRecommendations.updatedAt)}`
+                : '尚未生成本地缓存，可点击“立即刷新”或运行脚本拉取'}
+            </div>
+
+            {brokerRecommendationError ? (
+              <div className="rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger">
+                {brokerRecommendationError}
+              </div>
+            ) : isLoadingBrokerRecommendations ? (
+              <div className="text-sm text-secondary-text">加载中...</div>
+            ) : brokerRecommendationView === 'stock' && brokerRecommendations?.items?.length ? (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {brokerRecommendations.items.map((item) => (
+                  <div
+                    key={`${item.tsCode}-${item.rank}`}
+                    className="rounded-2xl border border-white/8 bg-elevated/20 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="history">#{item.rank}</Badge>
+                          <button
+                            type="button"
+                            onClick={() => submitAnalysis(item.code)}
+                            className="truncate text-left text-base font-semibold text-white transition-colors hover:text-cyan"
+                            title={`直接分析 ${item.name || item.code}`}
+                          >
+                            {item.name || item.code}
+                          </button>
+                        </div>
+                        <div className="mt-1 text-sm text-secondary-text">
+                          {item.code} · {item.tsCode}
+                        </div>
+                      </div>
+                      <Badge variant={item.market === 'cn' ? 'danger' : item.market === 'hk' ? 'warning' : 'info'}>
+                        {item.market.toUpperCase()}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between text-sm">
+                      <span className="text-secondary-text">覆盖券商</span>
+                      <span className="font-medium text-white">{item.brokerCount} 家</span>
+                    </div>
+                    <div className="mt-3 text-sm text-secondary-text">
+                      {item.brokers.length ? item.brokers.slice(0, 6).join('、') : '暂无券商名称明细'}
+                      {item.brokers.length > 6 ? ' 等' : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : brokerRecommendationView === 'broker' && brokerRecommendations?.brokers?.length ? (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {brokerRecommendations.brokers.map((item) => (
+                  <div key={`${item.broker}-${item.rank}`} className="rounded-2xl border border-white/8 bg-elevated/20 p-4">
+                    {(() => {
+                      const shouldCollapse = item.pickCount > BROKER_PICK_AUTO_EXPAND_LIMIT;
+                      const isExpanded = !shouldCollapse || Boolean(expandedBrokerCards[item.broker]);
+                      const visiblePicks = isExpanded
+                        ? item.picks
+                        : item.picks.slice(0, BROKER_PICK_PREVIEW_LIMIT);
+                      return (
+                        <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="history">#{item.rank}</Badge>
+                          <span className="truncate text-base font-semibold text-white">{item.broker}</span>
+                        </div>
+                        <div className="mt-1 text-sm text-secondary-text">当月推荐 {item.pickCount} 只</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3 text-xs text-secondary-text">
+                      <span>
+                        {shouldCollapse
+                          ? `默认预览前 ${Math.min(BROKER_PICK_PREVIEW_LIMIT, item.pickCount)} 只，点击股票可直接分析`
+                          : `当前券商推荐 ${item.pickCount} 只，已全部展示，可直接点击股票分析`}
+                      </span>
+                      {shouldCollapse ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleBrokerCard(item.broker)}
+                          className="shrink-0 rounded-full border border-white/10 bg-card/70 px-3 py-1 text-xs text-cyan transition-colors hover:bg-cyan/10"
+                        >
+                          {isExpanded
+                            ? '收起'
+                            : `展开全部 ${item.pickCount} 只`}
+                        </button>
+                      ) : null}
+                    </div>
+                    <div
+                      className={`mt-4 flex flex-wrap gap-2 ${
+                        isExpanded && item.picks.length > 12
+                          ? 'max-h-44 overflow-y-auto pr-1'
+                          : ''
+                      }`}
+                    >
+                      {visiblePicks.map((pick) => (
+                        <button
+                          key={`${item.broker}-${pick.tsCode}`}
+                          type="button"
+                          onClick={() => submitAnalysis(pick.code)}
+                          className="rounded-full border border-cyan/20 bg-cyan/10 px-3 py-1 text-sm text-cyan transition-colors hover:bg-cyan/20"
+                          title={`直接分析 ${pick.name || pick.code}`}
+                        >
+                          {pick.name || pick.code}
+                        </button>
+                      ))}
+                    </div>
+                    {isExpanded && item.picks.length > 12 ? (
+                      <div className="mt-3 text-xs text-secondary-text">
+                        当前券商推荐股较多，已启用卡片内滚动展示全部 {item.pickCount} 只。
+                      </div>
+                    ) : null}
+                        </>
+                      );
+                    })()}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-secondary-text">
+                当前没有可展示的券商月度金股数据。可点击“立即刷新”，或手动运行 `python scripts/refresh_broker_monthly_picks.py` 拉取最新月份。
+              </div>
+            )}
+          </div>
+        </Card>
+
         {analysisError ? (
           <ApiErrorAlert
             error={analysisError}

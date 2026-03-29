@@ -1919,11 +1919,12 @@ class StockScreenerService:
         _ensure_screener_runtime_deps(require_requests=True)
         config = get_config()
         token = str(getattr(config, "tushare_token", "") or "").strip()
+        api_url = str(getattr(config, "tushare_api_url", "") or "http://api.tushare.pro").strip() or "http://api.tushare.pro"
         if not token:
             raise RuntimeError("TUSHARE_TOKEN not configured")
 
         response = requests.post(
-            "http://api.tushare.pro",
+            api_url,
             json={"api_name": api_name, "token": token, "params": params, "fields": fields},
             timeout=20,
         )

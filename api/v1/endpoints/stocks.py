@@ -17,6 +17,10 @@ from typing import Optional
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 
 from api.v1.schemas.stocks import (
+    BrokerRecommendationItem,
+    BrokerRecommendationBrokerItem,
+    BrokerRecommendationBrokerPick,
+    BrokerRecommendationResponse,
     ExtractFromImageResponse,
     ExtractItem,
     KLineData,
@@ -35,6 +39,7 @@ from src.services.import_parser import (
     parse_import_from_text,
 )
 from src.services.stock_service import StockService
+from src.services.broker_recommendation_service import BrokerRecommendationService
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +47,152 @@ router = APIRouter()
 
 # 须在 /{stock_code} 路由之前定义
 ALLOWED_MIME_STR = ", ".join(ALLOWED_MIME)
+
+
+@router.get(
+    "/broker-recommendations",
+    response_model=BrokerRecommendationResponse,
+    responses={
+        200: {"description": "券商月度金股列表"},
+        500: {"description": "服务器错误", "model": ErrorResponse},
+    },
+    summary="获取券商月度金股",
+    description="从本地缓存读取 Tushare broker_recommend 聚合结果，默认返回最新月份。",
+)
+def get_broker_recommendations(
+    month: Optional[str] = Query(None, description="指定月份，格式 YYYYMM"),
+    limit: int = Query(12, ge=1, le=100, description="返回条数上限"),
+) -> BrokerRecommendationResponse:
+    try:
+        service = BrokerRecommendationService()
+        payload = service.get_monthly_recommendations(month=month, limit=limit)
+        items = [
+            BrokerRecommendationItem(
+                rank=int(item.get("rank") or 0),
+                code=str(item.get("code") or ""),
+                ts_code=str(item.get("ts_code") or ""),
+                name=item.get("name"),
+                market=str(item.get("market") or "cn"),
+                broker_count=int(item.get("broker_count") or 0),
+                brokers=[str(broker).strip() for broker in list(item.get("brokers") or []) if str(broker).strip()],
+            )
+            for item in list(payload.get("items") or [])
+            if str(item.get("ts_code") or "").strip()
+        ]
+        brokers = [
+            BrokerRecommendationBrokerItem(
+                rank=int(item.get("rank") or 0),
+                broker=str(item.get("broker") or ""),
+                pick_count=int(item.get("pick_count") or 0),
+                picks=[
+                    BrokerRecommendationBrokerPick(
+                        rank=int(pick.get("rank") or 0),
+                        code=str(pick.get("code") or ""),
+                        ts_code=str(pick.get("ts_code") or ""),
+                        name=pick.get("name"),
+                        market=str(pick.get("market") or "cn"),
+                        broker_count=int(pick.get("broker_count") or 0),
+                    )
+                    for pick in list(item.get("picks") or [])
+                    if str(pick.get("ts_code") or "").strip()
+                ],
+            )
+            for item in list(payload.get("brokers") or [])
+            if str(item.get("broker") or "").strip()
+        ]
+        return BrokerRecommendationResponse(
+            month=payload.get("month"),
+            updated_at=payload.get("updated_at"),
+            available_months=[str(item).strip() for item in list(payload.get("available_months") or []) if str(item).strip()],
+            broker_total=int(payload.get("broker_total") or 0),
+            total_picks=int(payload.get("total_picks") or 0),
+            items=items,
+            brokers=brokers,
+        )
+    except Exception as e:
+        logger.error("获取券商月度金股失败: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": f"获取券商月度金股失败: {str(e)}",
+            },
+        )
+
+
+@router.post(
+    "/broker-recommendations/refresh",
+    response_model=BrokerRecommendationResponse,
+    responses={
+        200: {"description": "刷新后的券商月度金股列表"},
+        500: {"description": "服务器错误", "model": ErrorResponse},
+    },
+    summary="刷新券商月度金股缓存",
+    description="实时调用 Tushare broker_recommend 刷新本地缓存，并返回最新/指定月份结果。",
+)
+def refresh_broker_recommendations(
+    month: Optional[str] = Query(None, description="指定月份，格式 YYYYMM；为空时刷新最近 3 个月"),
+    history_months: int = Query(3, ge=1, le=12, description="未指定 month 时回刷最近几个月"),
+    top: int = Query(50, ge=1, le=200, description="每个月保留的聚合股票数"),
+    limit: int = Query(12, ge=1, le=100, description="返回条数上限"),
+) -> BrokerRecommendationResponse:
+    try:
+        service = BrokerRecommendationService()
+        months = [month] if month else None
+        service.refresh_cache(months=months, history_months=history_months, top_n=top)
+        payload = service.get_monthly_recommendations(month=month, limit=limit)
+        items = [
+            BrokerRecommendationItem(
+                rank=int(item.get("rank") or 0),
+                code=str(item.get("code") or ""),
+                ts_code=str(item.get("ts_code") or ""),
+                name=item.get("name"),
+                market=str(item.get("market") or "cn"),
+                broker_count=int(item.get("broker_count") or 0),
+                brokers=[str(broker).strip() for broker in list(item.get("brokers") or []) if str(broker).strip()],
+            )
+            for item in list(payload.get("items") or [])
+            if str(item.get("ts_code") or "").strip()
+        ]
+        brokers = [
+            BrokerRecommendationBrokerItem(
+                rank=int(item.get("rank") or 0),
+                broker=str(item.get("broker") or ""),
+                pick_count=int(item.get("pick_count") or 0),
+                picks=[
+                    BrokerRecommendationBrokerPick(
+                        rank=int(pick.get("rank") or 0),
+                        code=str(pick.get("code") or ""),
+                        ts_code=str(pick.get("ts_code") or ""),
+                        name=pick.get("name"),
+                        market=str(pick.get("market") or "cn"),
+                        broker_count=int(pick.get("broker_count") or 0),
+                    )
+                    for pick in list(item.get("picks") or [])
+                    if str(pick.get("ts_code") or "").strip()
+                ],
+            )
+            for item in list(payload.get("brokers") or [])
+            if str(item.get("broker") or "").strip()
+        ]
+        return BrokerRecommendationResponse(
+            month=payload.get("month"),
+            updated_at=payload.get("updated_at"),
+            available_months=[str(item).strip() for item in list(payload.get("available_months") or []) if str(item).strip()],
+            broker_total=int(payload.get("broker_total") or 0),
+            total_picks=int(payload.get("total_picks") or 0),
+            items=items,
+            brokers=brokers,
+        )
+    except Exception as e:
+        logger.error("刷新券商月度金股失败: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": f"刷新券商月度金股失败: {str(e)}",
+            },
+        )
 
 
 @router.post(

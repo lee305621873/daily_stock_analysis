@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - 🖥️ **WebUI 控制台日志启动脚本**：新增 `scripts/run_webui_with_logs.sh`，以 `PYTHONUNBUFFERED=1` 前台启动 `--webui-only` 服务，并将当前终端输出同步写入 `logs/console_*.log`，便于排查 Agent Chat / SSE / LLM 调用日志。
 - 🧪 **AkShare 选股链路自检脚本**：新增 `scripts/test_akshare_screener.py`，可一键检测板块目录与板块成分接口是否可用，并输出耗时与错误分类（dns/timeout/connection/remote_disconnected/ssl），用于快速定位 “akshare unavailable” 根因。
+- 🔌 **Tushare 自定义接口地址配置**：新增 `TUSHARE_API_URL`，底层 `TushareFetcher` 会显式回写 `_DataApi__token` 与 `_DataApi__http_url`，便于试用接口或代理域名场景直接接入；选股里直接请求 Tushare 的链路也统一复用该地址。
+- 🌍 **Tushare 多市场自检脚本**：新增 `scripts/test_tushare_markets.py`，可一键验证当前 `TUSHARE_TOKEN + TUSHARE_API_URL` 是否能正常获取 A 股 `daily`、港股 `hk_daily`、美股 `us_daily`。
+- 🏦 **券商月度金股刷新脚本**：新增 `scripts/refresh_broker_monthly_picks.py`，基于 Tushare `broker_recommend` 按月抓取并聚合多家券商金股，落盘到本地缓存供 Web 首页复用；同时新增页面内刷新接口，支持首页直接触发更新。
 ### 新功能
 
 - 📊 **多市场技术指标选股器增强**
@@ -33,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - 公式编辑器模板扩充到 `26` 个（不少于 20），覆盖趋势跟随、突破、均值回归、量价共振等高胜率倾向规则；默认模板可直接用于 A/H/US 三市场统一 DSL 扫描。
   - 公式编辑器“我的公式”升级为服务端持久化：支持跨机器共享同一后端下的自定义模板，并保留旧版浏览器 `localStorage` 模板的首次自动迁移能力。
   - 公式校验结果增强：新增复杂度等级/评分、表达式节点数、函数调用分布与优化建议，帮助快速评估公式可读性、维护成本与扫描耗时风险。
+  - Web 首页新增 `券商月度金股` 卡片：读取本地缓存的 Tushare `broker_recommend` 聚合结果，展示最新月份高频入选股票、覆盖券商数量和券商名称，并支持切换已缓存月份、页面内“立即刷新”、`按股票/按券商` 双视图，以及点击股票直接发起分析。
   - 选股结果导出增强：Web 侧新增 `Excel(.xlsx)` 与 `CSV(.csv)` 导出；后端新增任务结果导出接口（支持 `all/page` 范围）与行数据导出接口，支持后台任务全量导出和小范围同步结果导出。
   - 选股扫描接口在“未显式传入 `codes` 且存在有效范围（scope/board）”时改为默认后台任务（`202 + task_id`），降低范围扫描直接命中 HTTP 超时的概率；Web 端同步按该规则优先走异步进度流。
   - 修复扫描范围元数据接口过慢导致前端回退为“仅 A 股全市场”的问题；现在扫描范围列表优先使用本地配置预览，页面可稳定展示 A 股预置板块、动态行业/概念板块和自定义股票池入口。

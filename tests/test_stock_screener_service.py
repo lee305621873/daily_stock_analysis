@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import unittest
 import types
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
@@ -214,6 +214,42 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         )
 
         self.assertEqual([item.code for item in result], ["AAPL", "MSFT"])
+
+    def test_tushare_query_uses_configured_api_url(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+        fake_response = MagicMock()
+        fake_response.json.return_value = {
+            "code": 0,
+            "data": {
+                "fields": ["ts_code", "name"],
+                "items": [["000001.SZ", "平安银行"]],
+            },
+        }
+
+        with patch("src.services.stock_screener_service.get_config") as mock_get_config:
+            with patch("src.services.stock_screener_service.requests.post", return_value=fake_response) as mock_post:
+                mock_get_config.return_value = types.SimpleNamespace(
+                    tushare_token="test-token",
+                    tushare_api_url="http://jiaoch.site",
+                )
+                result = service._tushare_query(  # pylint: disable=protected-access
+                    "daily",
+                    {"ts_code": "000001.SZ"},
+                    "ts_code,name",
+                )
+
+        self.assertEqual(result.iloc[0]["ts_code"], "000001.SZ")
+        self.assertEqual(result.iloc[0]["name"], "平安银行")
+        mock_post.assert_called_once_with(
+            "http://jiaoch.site",
+            json={
+                "api_name": "daily",
+                "token": "test-token",
+                "params": {"ts_code": "000001.SZ"},
+                "fields": "ts_code,name",
+            },
+            timeout=20,
+        )
 
     def test_scope_catalog_uses_config_preview_for_cn_board_scope(self) -> None:
         service = StockScreenerService(manager=_FakeManager())

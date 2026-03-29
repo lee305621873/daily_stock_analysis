@@ -33,6 +33,7 @@ demo
 | AI | 决策仪表盘 | 一句话核心结论 + 精确买卖点位 + 操作检查清单 |
 | 分析 | 多维度分析 | 技术面（盘中实时 MA/多头排列）+ 筹码分布 + 舆情情报 + 实时行情 |
 | 市场 | 全球市场 | 支持 A股、港股、美股及美股指数（SPX、DJI、IXIC 等） |
+| 首页 | 券商月度金股 | 首页新增 `券商月度金股` 卡片，读取 Tushare `broker_recommend` 聚合结果，支持页面内“立即刷新”、切换月份、`按股票/按券商` 双视图；点击股票可直接发起分析 |
 | 选股 | 技术指标扫描 | Web 主站新增 `选股` Tab，默认进入公式选股；支持 A 股/港股/美股 `条件模式`、`公式模式`、`组合模式（公式+条件）`，扫描范围由后端统一维护；A 股除预置板块外还支持从真实行业/概念板块目录选择具体板块并预览真实成分股，A 股预置板块快捷入口也会尝试加载真实板块预览；A 股板块成分股链路已升级为 `AkShare -> Tushare -> 搜狐板块页 -> 本地维护清单`（会在数量偏少时尝试自动补全），且展示顺序默认以 Sohu 实时抓取顺序为准；后端新增完整板块成分股接口，便于脚本和后续页面复用；港股/美股新增后端维护的行业板块池，并按“龙头 / 中军 / 弹性”分层维护，且港股全市场列表新增 `AkShare stock_hk_spot` 兜底以提升动态板块可用性；当前已补充半导体、科技、消费、金融、公用事业、REITs、航空航天军工等可配置板块，前端选中后会直接展示分层明细，且扫描范围元数据会优先走本地配置预览以避免页面回退成仅显示全市场；后续可继续替换为更真实的数据源；支持扫描上限与指标提示；A 股全市场扫描会自动转后台任务并通过 SSE 实时刷新进度 |
 
 > 选股页的指标元数据、公式函数列表与公式校验现已和行情数据源初始化解耦；即使本地尚未装全 AkShare / Tushare / YFinance 等行情依赖，页面也能先加载基础配置并完成公式校验。实际执行扫描时仍需对应的数据源环境可用。
@@ -54,7 +55,7 @@ demo
 
 > 选股页公式编辑器已内置 `26` 个公式模板（趋势跟随 / 动量突破 / 均值回归 / 量价共振四类），并优先采用公开研究与公开回测中相对稳健、胜率倾向较高的规则组合作为默认示例；仍建议结合你的市场与持有周期做本地回测后再实盘使用。
 
-> 公式编辑器支持“我的公式”服务端持久化与复用：同一后端下可跨机器同步查看/保存/删除；若浏览器中已有历史 `localStorage` 模板，会在首次加载时自动迁移到服务端。公式校验结果新增复杂度等级/评分、表达式节点数、函数调用分布与优化建议，便于快速判断公式可维护性与扫描成本。
+> 公式编辑器支持“我的公式”本地保存与复用（浏览器 `localStorage`），可将当前公式一键保存、下次直接套用或删除；公式校验结果新增复杂度等级/评分、表达式节点数、函数调用分布与优化建议，便于快速判断公式可维护性与扫描成本。
 
 > 条件选股指标已扩展支持估值/基本面标量指标：`HEAT`（量能热度）、`PE`、`PB`、`PEG`（估算，按 `PE / 净利润同比(%)`，当净利润同比<=0或缺失时记为不可用）、`ROE`、`REVENUE_YOY`、`NET_PROFIT_YOY`。其中 `ROE/营收同比/净利润同比` 当前以 A 股可用性最佳，港股/美股将按后续数据源能力逐步补齐。
 
@@ -65,6 +66,8 @@ demo
 > 如需直接导出板块代码，可运行 `python scripts/export_board_codes.py --market cn --board-type industry --board-name 半导体`；半导体也保留了快捷脚本 `python scripts/export_semiconductor_codes.py`。脚本与 API 现在共用同一条 A 股板块链路：`AkShare -> Tushare -> 搜狐板块页 -> 仓库维护清单`。
 
 > 如需快速判断当前环境的 AkShare 板块接口是否可用，可运行 `python scripts/test_akshare_screener.py --board-type industry --board 半导体`；脚本会输出 `catalog_ok/constituents_ok`、耗时与错误分类（dns/timeout/connection/remote_disconnected/ssl）。
+
+> 如需验证 Tushare 是否能正常拉取 A 股 / 港股 / 美股，可运行 `python scripts/test_tushare_markets.py`；首页“券商月度金股”支持页面内直接点击“立即刷新”，也可运行 `python scripts/refresh_broker_monthly_picks.py --history-months 3` 预热本地缓存。
 
 > A 股板块成分股会按“多源并集”方式聚合（Sohu/AkShare/Tushare/本地维护清单），展示顺序以 Sohu 实时顺序优先；`board_catalog` 的 `estimated_count` 也会优先取已缓存成分股数量，并在日志中输出各来源命中数量，便于排查“半导体不是 418”这类数量异常。
 
@@ -198,6 +201,7 @@ demo
 | `BRAVE_API_KEYS` | [Brave Search](https://brave.com/search/api/) API（隐私优先，美股优化，多个key用逗号分隔） | 可选 |
 | `SEARXNG_BASE_URLS` | SearXNG 自建实例（无配额兜底，需在 settings.yml 启用 format: json） | 可选 |
 | `TUSHARE_TOKEN` | [Tushare Pro](https://tushare.pro/weborder/#/login?reg=834638 ) Token | 可选 |
+| `TUSHARE_API_URL` | Tushare Pro 接口地址，默认 `http://api.tushare.pro`；试用接口可改为自定义域名 | 可选 |
 | `PREFETCH_REALTIME_QUOTES` | 实时行情预取开关：设为 `false` 可禁用全市场预取（默认 `true`） | 可选 |
 | `WECHAT_MSG_TYPE` | 企微消息类型，默认 markdown，支持配置 text 类型，发送纯 markdown 文本 | 可选 |
 | `NEWS_MAX_AGE_DAYS` | 新闻最大时效（天），默认 3，避免使用过时信息 | 可选 |
@@ -477,3 +481,4 @@ npm run build
 本项目仅供学习和研究使用，不构成任何投资建议。股市有风险，投资需谨慎。作者不对使用本项目产生的任何损失负责。
 
 ---
+
