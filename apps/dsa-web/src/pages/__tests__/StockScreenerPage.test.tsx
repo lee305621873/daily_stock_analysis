@@ -96,6 +96,10 @@ const formulaValidation: FormulaValidationResponse = {
   estimatedLookback: 250,
   warnings: [],
   suggestions: ['建议加入成交量条件，减少噪音信号。'],
+  meaning: '该公式会在最新一个交易日同时满足以下规则时触发选股：收盘价的 5 周期简单移动平均线上穿收盘价的 20 周期简单移动平均线。',
+  meaningBreakdown: ['条件 1：收盘价的 5 周期简单移动平均线上穿收盘价的 20 周期简单移动平均线。'],
+  errorTitle: null,
+  errorDetail: null,
 };
 
 const scanResponse: ScreenerScanResponse = {
@@ -455,8 +459,25 @@ describe('StockScreenerPage', () => {
     expect(screen.getByText('RSI < 30')).toBeTruthy();
   });
 
-  it('shows inline error when formula validation fails', async () => {
-    mockedScreenerApi.validateFormula.mockRejectedValueOnce(new Error('Unsupported function: BADFUNC'));
+  it('shows chinese validation details when formula validation returns invalid payload', async () => {
+    mockedScreenerApi.validateFormula.mockResolvedValueOnce({
+      valid: false,
+      normalizedFormula: 'BADFUNC(CLOSE)',
+      referencedFields: [],
+      functions: [],
+      functionUsage: {},
+      expressionNodes: 0,
+      complexityScore: 0,
+      complexityLevel: 'low',
+      message: '存在未支持的函数：BADFUNC()',
+      estimatedLookback: 250,
+      warnings: [],
+      suggestions: ['请改用已支持函数，或将该函数逻辑拆成现有函数组合。'],
+      meaning: '',
+      meaningBreakdown: [],
+      errorTitle: '函数暂不支持',
+      errorDetail: '检测到未支持函数 `BADFUNC()`。当前公式编辑器只允许白名单内的同花顺/通达信兼容函数与内置指标函数。',
+    });
 
     render(<StockScreenerPage />);
 
@@ -466,8 +487,11 @@ describe('StockScreenerPage', () => {
     await waitFor(() => {
       expect(mockedScreenerApi.validateFormula).toHaveBeenCalledWith('BADFUNC(CLOSE)');
     });
-    expect(await screen.findByText('公式校验失败')).toBeTruthy();
-    expect(await screen.findByText('Unsupported function: BADFUNC')).toBeTruthy();
+    expect(await screen.findByText('公式未通过')).toBeTruthy();
+    expect(await screen.findByText('函数暂不支持')).toBeTruthy();
+    expect(await screen.findByText('存在未支持的函数：BADFUNC()')).toBeTruthy();
+    expect(await screen.findByText(/白名单内的同花顺\/通达信兼容函数/)).toBeTruthy();
+    expect(await screen.findByText('修正建议')).toBeTruthy();
   });
 
   it('supports formula mode validation and auto-validates before scan', async () => {
@@ -521,6 +545,7 @@ describe('StockScreenerPage', () => {
     );
 
     expect(await screen.findByText('校验通过')).toBeTruthy();
+    expect(await screen.findByText('公式含义')).toBeTruthy();
     expect(await screen.findByText('复杂度评分 56')).toBeTruthy();
     expect(await screen.findByText('函数调用分布')).toBeTruthy();
     expect(await screen.findByText('优化建议')).toBeTruthy();

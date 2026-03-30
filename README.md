@@ -202,6 +202,7 @@ demo
 | `SEARXNG_BASE_URLS` | SearXNG 自建实例（无配额兜底，需在 settings.yml 启用 format: json） | 可选 |
 | `TUSHARE_TOKEN` | [Tushare Pro](https://tushare.pro/weborder/#/login?reg=834638 ) Token | 可选 |
 | `TUSHARE_API_URL` | Tushare Pro 接口地址，默认 `http://api.tushare.pro`；试用接口可改为自定义域名 | 可选 |
+| `TUSHARE_RATE_LIMIT_PER_MINUTE` | Tushare 本地每分钟限流，默认 `80`；设为 `0` 可关闭本地限流 | 可选 |
 | `PREFETCH_REALTIME_QUOTES` | 实时行情预取开关：设为 `false` 可禁用全市场预取（默认 `true`） | 可选 |
 | `WECHAT_MSG_TYPE` | 企微消息类型，默认 markdown，支持配置 text 类型，发送纯 markdown 文本 | 可选 |
 | `NEWS_MAX_AGE_DAYS` | 新闻最大时效（天），默认 3，避免使用过时信息 | 可选 |

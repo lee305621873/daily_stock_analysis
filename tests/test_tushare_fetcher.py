@@ -15,6 +15,24 @@ from data_provider.tushare_fetcher import TushareFetcher
 
 
 class TestTushareFetcherEndpointPatch(unittest.TestCase):
+    def test_init_reads_rate_limit_from_config(self) -> None:
+        fake_api = types.SimpleNamespace(_DataApi__timeout=15)
+        fake_ts = types.SimpleNamespace(
+            set_token=MagicMock(),
+            pro_api=MagicMock(return_value=fake_api),
+        )
+
+        with patch.dict(sys.modules, {"tushare": fake_ts}):
+            with patch("data_provider.tushare_fetcher.get_config") as mock_get_config:
+                mock_get_config.return_value = types.SimpleNamespace(
+                    tushare_token="trial-token",
+                    tushare_api_url="http://jiaoch.site",
+                    tushare_rate_limit_per_minute=0,
+                )
+                fetcher = TushareFetcher()
+
+        self.assertEqual(fetcher.rate_limit_per_minute, 0)
+
     def test_init_sets_private_token_and_http_url(self) -> None:
         fake_api = types.SimpleNamespace(_DataApi__timeout=15)
         fake_ts = types.SimpleNamespace(
@@ -56,7 +74,7 @@ class TestTushareFetcherEndpointPatch(unittest.TestCase):
         self.assertEqual(result.iloc[0]["ts_code"], "000001.SZ")
         self.assertEqual(result.iloc[0]["close"], 12.34)
         mock_post.assert_called_once_with(
-            "http://jiaoch.site",
+            "http://jiaoch.site/daily",
             json={
                 "api_name": "daily",
                 "token": "trial-token",
@@ -65,6 +83,50 @@ class TestTushareFetcherEndpointPatch(unittest.TestCase):
             },
             timeout=15,
         )
+
+    def test_patched_query_includes_response_body_when_http_error(self) -> None:
+        fake_api = types.SimpleNamespace(_DataApi__timeout=15)
+        fake_ts = types.SimpleNamespace(
+            set_token=MagicMock(),
+            pro_api=MagicMock(return_value=fake_api),
+        )
+        fake_response = MagicMock(status_code=404, text="<html><title>404 Not Found</title></html>")
+
+        with patch.dict(sys.modules, {"tushare": fake_ts}):
+            with patch("data_provider.tushare_fetcher.get_config") as mock_get_config:
+                with patch("data_provider.tushare_fetcher.requests.post", return_value=fake_response):
+                    mock_get_config.return_value = types.SimpleNamespace(
+                        tushare_token="trial-token",
+                        tushare_api_url="http://jiaoch.site",
+                    )
+                    fetcher = TushareFetcher()
+                    with self.assertRaises(Exception) as ctx:
+                        fetcher._api.query("daily", ts_code="000001.SZ")
+
+                    self.assertIn("Tushare API HTTP 404", str(ctx.exception))
+                    self.assertIn("url=http://jiaoch.site/daily", str(ctx.exception))
+                    self.assertIn("404 Not Found", str(ctx.exception))
+
+    def test_check_rate_limit_skips_sleep_when_limit_disabled(self) -> None:
+        fake_api = types.SimpleNamespace(_DataApi__timeout=15)
+        fake_ts = types.SimpleNamespace(
+            set_token=MagicMock(),
+            pro_api=MagicMock(return_value=fake_api),
+        )
+
+        with patch.dict(sys.modules, {"tushare": fake_ts}):
+            with patch("data_provider.tushare_fetcher.get_config") as mock_get_config:
+                with patch("data_provider.tushare_fetcher.time.sleep") as mock_sleep:
+                    mock_get_config.return_value = types.SimpleNamespace(
+                        tushare_token="trial-token",
+                        tushare_api_url="http://jiaoch.site",
+                        tushare_rate_limit_per_minute=0,
+                    )
+                    fetcher = TushareFetcher()
+                    fetcher._call_count = 999
+                    fetcher._check_rate_limit()
+
+        mock_sleep.assert_not_called()
 
 
 if __name__ == "__main__":

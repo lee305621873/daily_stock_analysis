@@ -10,7 +10,7 @@ TushareFetcher - 备用数据源 1 (Priority 2)
 
 流控策略：
 1. 实现"每分钟调用计数器"
-2. 超过免费配额（80次/分）时，强制休眠到下一分钟
+2. 超过配置配额时，强制休眠到下一分钟；配置为 0 时关闭本地分钟限流
 3. 使用 tenacity 实现指数退避重试
 """
 
@@ -81,7 +81,7 @@ class TushareFetcher(BaseFetcher):
     
     关键策略：
     - 每分钟调用计数器，防止超出配额
-    - 超过 80 次/分钟时强制等待
+    - 超过配置的每分钟阈值时强制等待
     - 失败后指数退避重试
     
     配额说明（Tushare 免费用户）：
@@ -92,14 +92,16 @@ class TushareFetcher(BaseFetcher):
     name = "TushareFetcher"
     priority = int(os.getenv("TUSHARE_PRIORITY", "2"))  # 默认优先级，会在 __init__ 中根据配置动态调整
 
-    def __init__(self, rate_limit_per_minute: int = 80):
+    def __init__(self, rate_limit_per_minute: Optional[int] = None):
         """
         初始化 TushareFetcher
 
         Args:
-            rate_limit_per_minute: 每分钟最大请求数（默认80，Tushare免费配额）
+            rate_limit_per_minute: 每分钟最大请求数；传入 0 或负数表示关闭本地分钟限流
         """
-        self.rate_limit_per_minute = rate_limit_per_minute
+        config = get_config()
+        configured_limit = int(getattr(config, "tushare_rate_limit_per_minute", 80) or 0)
+        self.rate_limit_per_minute = configured_limit if rate_limit_per_minute is None else int(rate_limit_per_minute)
         self._call_count = 0  # 当前分钟内的调用次数
         self._minute_start: Optional[float] = None  # 当前计数周期开始时间
         self._api: Optional[object] = None  # Tushare API 实例
@@ -148,8 +150,8 @@ class TushareFetcher(BaseFetcher):
         The SDK (v1.4.x) hardcodes http://api.waditu.com/dataapi and appends
         /{api_name} to the URL. That endpoint may return 503, causing silent
         empty-DataFrame failures. This method replaces the query method to
-        POST directly to the configured root URL (no path suffix), and also
-        writes the private SDK fields required by some trial/proxy endpoints.
+        POST to the configured base URL plus /{api_name}, and also writes the
+        private SDK fields required by some trial/proxy endpoints.
         """
         import types
 
@@ -167,9 +169,18 @@ class TushareFetcher(BaseFetcher):
                 'params': kwargs,
                 'fields': fields,
             }
-            res = requests.post(resolved_api_url, json=req_params, timeout=_timeout)
+            endpoint_url = f"{resolved_api_url}/{api_name}"
+            res = requests.post(endpoint_url, json=req_params, timeout=_timeout)
             if res.status_code != 200:
-                raise Exception(f"Tushare API HTTP {res.status_code}")
+                body_preview = (res.text or "").strip().replace("\n", "\\n")
+                if len(body_preview) > 300:
+                    body_preview = body_preview[:300] + "..."
+                if body_preview:
+                    raise Exception(
+                        f"Tushare API HTTP {res.status_code}, "
+                        f"url={endpoint_url}, response_body={body_preview}"
+                    )
+                raise Exception(f"Tushare API HTTP {res.status_code}, url={endpoint_url}")
             result = _json.loads(res.text)
             if result['code'] != 0:
                 raise Exception(result['msg'])
@@ -220,6 +231,9 @@ class TushareFetcher(BaseFetcher):
         2. 如果是，重置计数器
         3. 如果当前分钟调用次数超过限制，强制休眠
         """
+        if self.rate_limit_per_minute <= 0:
+            return
+
         current_time = time.time()
         
         # 检查是否需要重置计数器（新的一分钟）

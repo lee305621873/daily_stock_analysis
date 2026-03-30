@@ -845,6 +845,7 @@ class Config:
             feishu_folder_token=os.getenv('FEISHU_FOLDER_TOKEN'),
             tushare_token=os.getenv('TUSHARE_TOKEN'),
             tushare_api_url=os.getenv('TUSHARE_API_URL', 'http://api.tushare.pro').strip() or 'http://api.tushare.pro',
+            tushare_rate_limit_per_minute=int(os.getenv('TUSHARE_RATE_LIMIT_PER_MINUTE', '80')),
             litellm_model=litellm_model,
             litellm_fallback_models=litellm_fallback_models,
             llm_temperature=resolve_unified_llm_temperature(litellm_model),

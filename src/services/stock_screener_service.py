@@ -1092,16 +1092,7 @@ class StockScreenerService:
         try:
             return self._formula_engine.validate(formula)
         except FormulaValidationError as exc:
-            normalized_formula = (formula or "").strip()
-            return FormulaValidationResponse(
-                valid=False,
-                normalized_formula=normalized_formula,
-                referenced_fields=[],
-                functions=[],
-                message=str(exc),
-                estimated_lookback=self._formula_engine.DEFAULT_LOOKBACK,
-                warnings=[],
-            )
+            return self._formula_engine.build_invalid_response(formula, exc)
 
     def _market_list_column(self, df, market: MarketType, kind: str) -> Optional[str]:
         candidates: Dict[str, List[str]] = {
@@ -1956,15 +1947,22 @@ class StockScreenerService:
         config = get_config()
         token = str(getattr(config, "tushare_token", "") or "").strip()
         api_url = str(getattr(config, "tushare_api_url", "") or "http://api.tushare.pro").strip() or "http://api.tushare.pro"
+        endpoint_url = api_url.rstrip("/") + f"/{api_name}"
         if not token:
             raise RuntimeError("TUSHARE_TOKEN not configured")
 
         response = requests.post(
-            api_url,
+            endpoint_url,
             json={"api_name": api_name, "token": token, "params": params, "fields": fields},
             timeout=20,
         )
-        response.raise_for_status()
+        if response.status_code != 200:
+            body_preview = (response.text or "").strip().replace("\n", "\\n")
+            if len(body_preview) > 300:
+                body_preview = body_preview[:300] + "..."
+            raise RuntimeError(
+                f"Tushare API HTTP {response.status_code}, url={endpoint_url}, response_body={body_preview}"
+            )
         payload = response.json()
         if int(payload.get("code", -1)) != 0:
             message = str(payload.get("msg") or f"Tushare {api_name} failed")

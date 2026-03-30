@@ -244,6 +244,10 @@ class StockScreenerApiTestCase(unittest.TestCase):
                 "message": "公式校验通过",
                 "estimated_lookback": 250,
                 "warnings": [],
+                "meaning": "该公式会在最新一个交易日满足以下规则时触发选股：收盘价大于收盘价的5周期简单移动平均线。",
+                "meaning_breakdown": ["条件 1：收盘价大于收盘价的5周期简单移动平均线"],
+                "error_title": None,
+                "error_detail": None,
             }
 
             response = self.client.post(
@@ -253,6 +257,7 @@ class StockScreenerApiTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["valid"])
+        self.assertIn("meaning", response.json())
 
     def test_scan_endpoint_success(self) -> None:
         with patch("api.v1.endpoints.stock_screener.StockScreenerService") as service_cls:

@@ -465,6 +465,10 @@ class FormulaValidationResponse(BaseModel):
     estimated_lookback: int = Field(default=250, ge=1)
     warnings: List[str] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
+    meaning: str = Field(default="", description="Human-readable explanation of the formula")
+    meaning_breakdown: List[str] = Field(default_factory=list, description="Step-by-step formula meaning")
+    error_title: Optional[str] = Field(default=None, description="Chinese validation error title")
+    error_detail: Optional[str] = Field(default=None, description="Detailed Chinese validation error explanation")
 
 
 class ScreenerFormulaTemplate(BaseModel):

@@ -236,6 +236,8 @@ class StockScreenerServiceTestCase(unittest.TestCase):
     def test_tushare_query_uses_configured_api_url(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
         fake_response = MagicMock()
+        fake_response.status_code = 200
+        fake_response.text = ""
         fake_response.json.return_value = {
             "code": 0,
             "data": {
@@ -259,7 +261,7 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         self.assertEqual(result.iloc[0]["ts_code"], "000001.SZ")
         self.assertEqual(result.iloc[0]["name"], "平安银行")
         mock_post.assert_called_once_with(
-            "http://jiaoch.site",
+            "http://jiaoch.site/daily",
             json={
                 "api_name": "daily",
                 "token": "test-token",
@@ -679,14 +681,19 @@ class StockScreenerServiceTestCase(unittest.TestCase):
 
         self.assertTrue(result.valid)
         self.assertIn("MA", result.functions)
+        self.assertIn("公式", result.meaning)
+        self.assertTrue(result.meaning_breakdown)
 
     def test_validate_formula_returns_invalid_payload_instead_of_raising(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
 
-        result = service.validate_formula("__import__('os').system('pwd')")
+        result = service.validate_formula("BADFUNC(CLOSE)")
 
         self.assertFalse(result.valid)
-        self.assertIn("supported", result.message.lower())
+        self.assertEqual(result.error_title, "函数暂不支持")
+        self.assertIn("BADFUNC()", result.message)
+        self.assertIn("白名单", result.error_detail or "")
+        self.assertTrue(result.suggestions)
 
     def test_build_overseas_market_board_snapshots_prefers_live_matches_and_keeps_seed_codes(self) -> None:
         service = StockScreenerService(manager=_FakeManager())

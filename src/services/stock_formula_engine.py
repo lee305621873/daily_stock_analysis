@@ -49,6 +49,14 @@ class FormulaScanMatch:
     description: str
 
 
+@dataclass
+class FormulaErrorFeedback:
+    message: str
+    title: str
+    detail: str
+    suggestions: List[str]
+
+
 class FormulaStruct:
     """Container that exposes multi-output indicators through attributes."""
 
@@ -716,6 +724,59 @@ NAME_ALIASES = {
 
 FIELD_NAMES = {"OPEN", "HIGH", "LOW", "CLOSE", "VOL", "AMOUNT"}
 ATTR_WHITELIST = {"macd", "signal", "hist", "k", "d", "j", "upper", "mid", "lower", "bandwidth", "percent_b"}
+FIELD_LABELS = {
+    "OPEN": "开盘价",
+    "HIGH": "最高价",
+    "LOW": "最低价",
+    "CLOSE": "收盘价",
+    "VOL": "成交量",
+    "AMOUNT": "成交额",
+}
+ATTRIBUTE_LABELS = {
+    "macd": "MACD 快线",
+    "signal": "MACD 慢线",
+    "hist": "MACD 柱体",
+    "k": "K 值",
+    "d": "D 值",
+    "j": "J 值",
+    "upper": "布林上轨",
+    "mid": "布林中轨",
+    "lower": "布林下轨",
+    "bandwidth": "布林带宽",
+    "percent_b": "布林 %B",
+}
+DYNAINFO_CODE_LABELS = {
+    3: "最新价",
+    4: "最高价",
+    5: "最低价",
+    6: "开盘价",
+    7: "最新价",
+    8: "成交量",
+    10: "成交额",
+    11: "涨跌额",
+    12: "涨跌幅",
+    35: "市净率 PB",
+    39: "动态市盈率 PE",
+    40: "总市值",
+    41: "流通市值",
+}
+FINANCE_CODE_LABELS = {
+    1: "总股本",
+    2: "流通股本",
+    6: "每股净资产",
+    7: "流通股本",
+    30: "营收同比",
+    33: "每股收益 EPS",
+    34: "每股净资产",
+    35: "净资产收益率 ROE",
+    37: "总市值",
+    38: "流通市值",
+    40: "净利润同比",
+    41: "市盈率 PE",
+    42: "市净率 PB",
+    46: "营收同比",
+    47: "净利润同比",
+}
 
 
 class StockFormulaEngine:
@@ -739,6 +800,7 @@ class StockFormulaEngine:
     def validate(self, formula: str) -> FormulaValidationResponse:
         parsed = self.parse(formula)
         complexity_score, complexity_level = self._estimate_complexity(parsed)
+        meaning, meaning_breakdown = self._build_formula_meaning(parsed)
         return FormulaValidationResponse(
             valid=True,
             normalized_formula=parsed.normalized_formula,
@@ -752,6 +814,32 @@ class StockFormulaEngine:
             estimated_lookback=parsed.estimated_lookback,
             warnings=self._build_warnings(parsed),
             suggestions=self._build_suggestions(parsed, complexity_level),
+            meaning=meaning,
+            meaning_breakdown=meaning_breakdown,
+            error_title=None,
+            error_detail=None,
+        )
+
+    def build_invalid_response(self, formula: str, exc: Exception) -> FormulaValidationResponse:
+        normalized_formula = self._safe_normalize_formula(formula)
+        feedback = self._translate_validation_error(str(exc))
+        return FormulaValidationResponse(
+            valid=False,
+            normalized_formula=normalized_formula,
+            referenced_fields=[],
+            functions=[],
+            function_usage={},
+            expression_nodes=0,
+            complexity_score=0,
+            complexity_level="low",
+            message=feedback.message,
+            estimated_lookback=self.DEFAULT_LOOKBACK,
+            warnings=[],
+            suggestions=feedback.suggestions,
+            meaning="",
+            meaning_breakdown=[],
+            error_title=feedback.title,
+            error_detail=feedback.detail,
         )
 
     def parse(self, formula: str) -> FormulaParseResult:
@@ -884,6 +972,9 @@ class StockFormulaEngine:
         normalized = normalized.replace("，", ",").replace("（", "(").replace("）", ")")
         normalized = normalized.replace("；", ";").replace("：", ":")
         normalized = normalized.replace("＋", "+").replace("－", "-").replace("×", "*").replace("÷", "/")
+        normalized = normalized.replace("&&", " AND ").replace("||", " OR ")
+        normalized = normalized.replace("<>", "!=")
+        normalized = re.sub(r"(?<![<>=!])!(?!=)", " NOT ", normalized)
         if ":=" in normalized or ";" in normalized:
             normalized = self._normalize_tdx_formula(normalized)
         normalized = re.sub(r"\bAND\b", " and ", normalized, flags=re.IGNORECASE)
@@ -1057,6 +1148,366 @@ class StockFormulaEngine:
         if func_name in {"MACD", "BOLL", "KDJ"}:
             return self.DEFAULT_LOOKBACK
         return self.DEFAULT_LOOKBACK
+
+    def _safe_normalize_formula(self, formula: str) -> str:
+        try:
+            return self._normalize_formula(formula)
+        except Exception:
+            return (formula or "").strip()
+
+    def _build_formula_meaning(self, parsed: FormulaParseResult) -> tuple[str, List[str]]:
+        items = self._collect_meaning_items(parsed.tree.body)
+        if items:
+            connector = "同时满足" if isinstance(parsed.tree.body, ast.BoolOp) and isinstance(parsed.tree.body.op, ast.And) else "满足"
+            meaning = f"该公式会在最新一个交易日{connector}以下规则时触发选股：{'；'.join(items)}。"
+            breakdown = [f"条件 {index + 1}：{item}" for index, item in enumerate(items)]
+            return meaning, breakdown
+        summary = self._describe_node(parsed.tree.body)
+        return f"该公式的核心判断为：{summary}。", [summary]
+
+    def _collect_meaning_items(self, node: ast.AST) -> List[str]:
+        if isinstance(node, ast.BoolOp):
+            if isinstance(node.op, ast.And):
+                return [self._describe_node(value) for value in node.values]
+            return [" 或 ".join(self._describe_node(value) for value in node.values)]
+        return [self._describe_node(node)]
+
+    def _describe_node(self, node: ast.AST) -> str:
+        if isinstance(node, ast.BoolOp):
+            connector = "且" if isinstance(node.op, ast.And) else "或"
+            return f"({f' {connector} '.join(self._describe_node(value) for value in node.values)})"
+        if isinstance(node, ast.Compare):
+            segments: List[str] = []
+            left = node.left
+            for operator_node, comparator in zip(node.ops, node.comparators):
+                segments.append(
+                    f"{self._describe_operand(left)}{self._describe_compare_operator(operator_node)}{self._describe_operand(comparator)}"
+                )
+                left = comparator
+            return " 且 ".join(segments)
+        if isinstance(node, ast.UnaryOp):
+            if isinstance(node.op, ast.Not):
+                return f"不满足“{self._describe_operand(node.operand)}”"
+            if isinstance(node.op, ast.USub):
+                return f"-{self._describe_operand(node.operand)}"
+            if isinstance(node.op, ast.UAdd):
+                return self._describe_operand(node.operand)
+        if isinstance(node, ast.BinOp):
+            return (
+                f"{self._describe_operand(node.left)}"
+                f"{self._describe_binary_operator(node.op)}"
+                f"{self._describe_operand(node.right)}"
+            )
+        if isinstance(node, ast.Call):
+            return self._describe_call(node)
+        if isinstance(node, ast.Attribute):
+            base = self._describe_operand(node.value)
+            return f"{base}的{ATTRIBUTE_LABELS.get(node.attr, node.attr)}"
+        if isinstance(node, ast.Name):
+            return FIELD_LABELS.get(node.id.upper(), node.id)
+        if isinstance(node, ast.Constant):
+            return self._format_literal(node.value)
+        return ast.unparse(node)
+
+    def _describe_operand(self, node: ast.AST) -> str:
+        description = self._describe_node(node)
+        if isinstance(node, (ast.BoolOp, ast.Compare)):
+            return f"（{description}）"
+        return description
+
+    @staticmethod
+    def _format_literal(value: Any) -> str:
+        if isinstance(value, str):
+            return f'"{value}"'
+        if isinstance(value, bool):
+            return "真" if value else "假"
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value)
+
+    @staticmethod
+    def _describe_compare_operator(operator_node: ast.cmpop) -> str:
+        if isinstance(operator_node, ast.Gt):
+            return " 大于 "
+        if isinstance(operator_node, ast.GtE):
+            return " 大于等于 "
+        if isinstance(operator_node, ast.Lt):
+            return " 小于 "
+        if isinstance(operator_node, ast.LtE):
+            return " 小于等于 "
+        if isinstance(operator_node, ast.Eq):
+            return " 等于 "
+        if isinstance(operator_node, ast.NotEq):
+            return " 不等于 "
+        return f" {type(operator_node).__name__} "
+
+    @staticmethod
+    def _describe_binary_operator(operator_node: ast.operator) -> str:
+        if isinstance(operator_node, ast.Add):
+            return " + "
+        if isinstance(operator_node, ast.Sub):
+            return " - "
+        if isinstance(operator_node, ast.Mult):
+            return " * "
+        if isinstance(operator_node, ast.Div):
+            return " / "
+        if isinstance(operator_node, ast.Mod):
+            return " % "
+        if isinstance(operator_node, ast.Pow):
+            return " 的幂 "
+        return f" {type(operator_node).__name__} "
+
+    def _describe_call(self, node: ast.Call) -> str:
+        if not isinstance(node.func, ast.Name):
+            return ast.unparse(node)
+        func_name = node.func.id.upper()
+        args = node.args
+        if func_name == "MA" and len(args) >= 2:
+            return f"{self._describe_operand(args[0])}的{self._describe_operand(args[1])}周期简单移动平均线"
+        if func_name == "EMA" and len(args) >= 2:
+            return f"{self._describe_operand(args[0])}的{self._describe_operand(args[1])}周期指数移动平均线"
+        if func_name == "SMA" and len(args) >= 2:
+            weight = f"，平滑权重 {self._describe_operand(args[2])}" if len(args) >= 3 else ""
+            return f"{self._describe_operand(args[0])}的{self._describe_operand(args[1])}周期同花顺/通达信 SMA 平滑均线{weight}"
+        if func_name == "WMA" and len(args) >= 2:
+            return f"{self._describe_operand(args[0])}的{self._describe_operand(args[1])}周期加权移动平均线"
+        if func_name == "REF" and len(args) >= 2:
+            return f"{self._describe_operand(args[0])}向前引用 {self._describe_operand(args[1])} 个周期的数值"
+        if func_name == "HHV" and len(args) >= 2:
+            return f"最近 {self._describe_operand(args[1])} 个周期内{self._describe_operand(args[0])}的最高值"
+        if func_name == "LLV" and len(args) >= 2:
+            return f"最近 {self._describe_operand(args[1])} 个周期内{self._describe_operand(args[0])}的最低值"
+        if func_name == "SUM" and len(args) >= 2:
+            return f"最近 {self._describe_operand(args[1])} 个周期内{self._describe_operand(args[0])}的累计值"
+        if func_name == "AVG" and len(args) >= 2:
+            return f"最近 {self._describe_operand(args[1])} 个周期内{self._describe_operand(args[0])}的平均值"
+        if func_name == "STD" and len(args) >= 2:
+            return f"最近 {self._describe_operand(args[1])} 个周期内{self._describe_operand(args[0])}的标准差"
+        if func_name == "ABS" and args:
+            return f"{self._describe_operand(args[0])}的绝对值"
+        if func_name == "MAX" and len(args) >= 2:
+            return f"{self._describe_operand(args[0])}与{self._describe_operand(args[1])}中的较大值"
+        if func_name == "MIN" and len(args) >= 2:
+            return f"{self._describe_operand(args[0])}与{self._describe_operand(args[1])}中的较小值"
+        if func_name == "IF" and len(args) >= 3:
+            return f"如果{self._describe_operand(args[0])}，则取{self._describe_operand(args[1])}，否则取{self._describe_operand(args[2])}"
+        if func_name == "CROSS" and len(args) >= 2:
+            return f"{self._describe_operand(args[0])}上穿{self._describe_operand(args[1])}"
+        if func_name == "COUNT" and len(args) >= 2:
+            return f"最近 {self._describe_operand(args[1])} 个周期内“{self._describe_operand(args[0])}”成立的次数"
+        if func_name == "EVERY" and len(args) >= 2:
+            return f"最近 {self._describe_operand(args[1])} 个周期持续满足“{self._describe_operand(args[0])}”"
+        if func_name == "EXIST" and len(args) >= 2:
+            return f"最近 {self._describe_operand(args[1])} 个周期内至少一次满足“{self._describe_operand(args[0])}”"
+        if func_name == "BARSLAST" and args:
+            return f"距离上次满足“{self._describe_operand(args[0])}”已经过去的周期数"
+        if func_name == "MACD":
+            return f"{self._describe_operand(args[0]) if args else '价格序列'}的 MACD 指标"
+        if func_name == "RSI":
+            period = self._describe_operand(args[1]) if len(args) >= 2 else "14"
+            return f"{self._describe_operand(args[0]) if args else '价格序列'}的 {period} 周期 RSI"
+        if func_name == "KDJ":
+            period = self._describe_operand(args[3]) if len(args) >= 4 else "9"
+            return f"基于高低收价格计算的 KDJ 指标（周期 {period}）"
+        if func_name == "BOLL":
+            period = self._describe_operand(args[1]) if len(args) >= 2 else "20"
+            return f"{self._describe_operand(args[0]) if args else '价格序列'}的布林带（周期 {period}）"
+        if func_name == "ATR":
+            period = self._describe_operand(args[3]) if len(args) >= 4 else "14"
+            return f"{period} 周期 ATR 波动率指标"
+        if func_name == "CCI":
+            period = self._describe_operand(args[3]) if len(args) >= 4 else "14"
+            return f"{period} 周期 CCI 顺势指标"
+        if func_name == "WR":
+            period = self._describe_operand(args[3]) if len(args) >= 4 else "14"
+            return f"{period} 周期 WR 威廉指标"
+        if func_name == "OBV":
+            return "OBV 能量潮指标"
+        if func_name == "MFI":
+            period = self._describe_operand(args[4]) if len(args) >= 5 else "14"
+            return f"{period} 周期 MFI 资金流量指标"
+        if func_name == "ROC":
+            period = self._describe_operand(args[1]) if len(args) >= 2 else "12"
+            return f"{self._describe_operand(args[0]) if args else '价格序列'}相对 {period} 周期前的变动率"
+        if func_name == "DYNAINFO" and args:
+            field_id = self._try_constant_int(args[0])
+            label = DYNAINFO_CODE_LABELS.get(field_id, f"DYNAINFO({self._describe_operand(args[0])})")
+            return f"同花顺实时行情字段“{label}”"
+        if func_name == "FINANCE" and args:
+            field_id = self._try_constant_int(args[0])
+            label = FINANCE_CODE_LABELS.get(field_id, f"FINANCE({self._describe_operand(args[0])})")
+            return f"同花顺财务字段“{label}”"
+        if func_name == "NAMELIKE" and args:
+            return f"股票名称匹配模式 {self._describe_operand(args[0])}"
+        return ast.unparse(node)
+
+    @staticmethod
+    def _try_constant_int(node: ast.AST) -> Optional[int]:
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return int(node.value)
+        return None
+
+    def _translate_validation_error(self, raw_message: str) -> FormulaErrorFeedback:
+        message = (raw_message or "").strip()
+        if message == "Formula cannot be empty":
+            return FormulaErrorFeedback(
+                message="公式不能为空，请先输入选股公式。",
+                title="公式不能为空",
+                detail="检验时没有检测到有效公式内容。请至少输入一个条件表达式，或粘贴完整的同花顺/通达信公式脚本。",
+                suggestions=["可直接输入如 `CLOSE > MA(CLOSE, 5)` 的条件公式。"],
+            )
+
+        syntax_match = re.search(r"Formula syntax error near position (\d+)", message)
+        if syntax_match:
+            position = syntax_match.group(1)
+            return FormulaErrorFeedback(
+                message=f"公式语法错误，位置大约在第 {position} 个字符附近。",
+                title="公式语法错误",
+                detail="解析器无法在该位置继续识别公式。常见原因包括括号没有闭合、运算符缺失、逗号/分号位置错误，或 `XG:` 语句结尾不完整。",
+                suggestions=[
+                    "优先检查括号、逗号和分号是否成对、位置是否正确。",
+                    "同花顺/通达信多语句公式建议使用 `;` 分隔，并确保最终有明确输出表达式。",
+                ],
+            )
+
+        identifier_match = re.search(r"Unsupported identifier: ([^.]+?)(?:\. Did you mean: (.+))?$", message)
+        if identifier_match:
+            identifier = identifier_match.group(1).strip()
+            guess = identifier_match.group(2)
+            detail = f"检测到未识别标识符 `{identifier}`。它既不是受支持的行情字段，也不是当前公式内已定义的变量或函数。"
+            suggestions = ["请确认字段名称是否写成 `OPEN/HIGH/LOW/CLOSE/VOL/AMOUNT`，或是否存在变量名拼写错误。"]
+            if guess:
+                detail += f" 你可能想写的是：{guess}。"
+                suggestions.insert(0, f"可优先尝试把 `{identifier}` 改成：{guess}。")
+            return FormulaErrorFeedback(
+                message=f"存在未识别的标识符：{identifier}",
+                title="标识符无法识别",
+                detail=detail,
+                suggestions=suggestions,
+            )
+
+        function_match = re.search(r"Unsupported function: ([^.]+?)(?:\. Did you mean: (.+))?$", message)
+        if function_match:
+            func_name = function_match.group(1).strip()
+            guess = function_match.group(2)
+            detail = f"检测到未支持函数 `{func_name}()`。当前公式编辑器只允许白名单内的同花顺/通达信兼容函数与内置指标函数。"
+            suggestions = ["请改用已支持函数，或将该函数逻辑拆成现有函数组合。"]
+            if guess:
+                detail += f" 根据当前函数目录，最接近的候选是：{guess}。"
+                suggestions.insert(0, f"可优先尝试将 `{func_name}()` 改写为：{guess}。")
+            return FormulaErrorFeedback(
+                message=f"存在未支持的函数：{func_name}()",
+                title="函数暂不支持",
+                detail=detail,
+                suggestions=suggestions,
+            )
+
+        attr_match = re.search(r"Unsupported output field: (\w+)", message)
+        if attr_match:
+            attr = attr_match.group(1)
+            supported = ", ".join(sorted(ATTR_WHITELIST))
+            return FormulaErrorFeedback(
+                message=f"指标输出字段 `{attr}` 暂不支持。",
+                title="指标输出字段不受支持",
+                detail=f"当前仅支持多输出指标的白名单属性访问，例如 `{supported}`。请确认你访问的是 MACD/KDJ/BOLL 的合法输出字段。",
+                suggestions=["请改用受支持的属性名，或先查看函数列表中的 outputs 示例。"],
+            )
+
+        syntax_type_match = re.search(r"Unsupported syntax: (\w+)", message)
+        if syntax_type_match:
+            syntax_name = syntax_type_match.group(1)
+            return FormulaErrorFeedback(
+                message=f"公式中包含不受支持的语法：{syntax_name}",
+                title="存在危险或非法语法",
+                detail="当前公式校验器只允许安全表达式，不支持导入、循环、推导式、lambda、下标执行等脚本行为。这是为了兼容同花顺选股语义并避免任意代码执行。",
+                suggestions=["请将复杂脚本改写为字段、函数、比较符和布尔运算组成的纯公式表达式。"],
+            )
+
+        if message == "Only direct function calls are supported":
+            return FormulaErrorFeedback(
+                message="仅支持直接函数调用。",
+                title="函数调用方式不正确",
+                detail="当前解析器只支持 `MA(CLOSE, 5)` 这类直接调用，不支持把函数结果继续当成函数调用对象，也不支持动态拼接函数名。",
+                suggestions=["请改为标准的函数调用写法，并避免链式执行。"],
+            )
+
+        circular_match = re.search(r"Circular variable reference detected: (.+)$", message)
+        if circular_match:
+            return FormulaErrorFeedback(
+                message="检测到变量循环引用。",
+                title="变量存在循环依赖",
+                detail=f"公式变量之间形成了循环依赖链：{circular_match.group(1)}。这种写法在同花顺/通达信选股条件中无法正确展开。",
+                suggestions=["请检查 `:=` 定义顺序，避免 A 依赖 B、B 又反过来依赖 A。"],
+            )
+
+        invalid_assignment_match = re.search(r"Invalid TDX assignment: (.+)$", message)
+        if invalid_assignment_match:
+            return FormulaErrorFeedback(
+                message="变量赋值语句不完整。",
+                title="同花顺/通达信赋值语法错误",
+                detail=f"以下赋值语句无法识别：`{invalid_assignment_match.group(1)}`。请确保使用 `变量名 := 表达式` 的完整格式。",
+                suggestions=["请检查是否遗漏变量名、`:=` 或右侧表达式。"],
+            )
+
+        invalid_variable_match = re.search(r"Invalid variable name in TDX formula: (.+)$", message)
+        if invalid_variable_match:
+            variable = invalid_variable_match.group(1).strip()
+            return FormulaErrorFeedback(
+                message=f"变量名 `{variable}` 不符合规则。",
+                title="变量名格式错误",
+                detail="变量名必须以字母或下划线开头，后续只能包含字母、数字和下划线。请不要使用空格、中文标点或运算符作为变量名的一部分。",
+                suggestions=["可改为 `VAR1`、`SIGNAL_A`、`XG1` 这类格式。"],
+            )
+
+        reserved_match = re.search(r"Variable name conflicts with reserved keyword: (.+)$", message)
+        if reserved_match:
+            variable = reserved_match.group(1).strip()
+            return FormulaErrorFeedback(
+                message=f"变量名 `{variable}` 与保留字冲突。",
+                title="变量名与保留字冲突",
+                detail="该名称已被字段名、函数名或逻辑关键字占用，继续使用会让公式含义产生歧义。",
+                suggestions=["请更换为自定义变量名，例如 `VAR_PE`、`MY_SIGNAL`。"],
+            )
+
+        if message.startswith("Expected numeric series/scalar"):
+            return FormulaErrorFeedback(
+                message="公式中出现了无法参与数值计算的内容。",
+                title="数值参数类型不正确",
+                detail="某个位置本应传入价格序列、指标序列或数字常量，但实际传入了其他类型。常见于把字符串、结构体对象或布尔表达式直接用于算术运算。",
+                suggestions=["请检查函数参数是否传入了正确的字段或数值。"],
+            )
+
+        if message.startswith("Expected boolean-compatible value"):
+            return FormulaErrorFeedback(
+                message="公式结果无法转成布尔条件。",
+                title="条件表达式类型不正确",
+                detail="最终选股条件必须能判断真/假。请确认布尔运算两侧都是可比较的数值或条件表达式。",
+                suggestions=["请补充比较运算符，例如 `>`, `<`, `=`，或使用 `AND/OR/NOT` 组合条件。"],
+            )
+
+        if message.startswith("Integer parameter cannot be empty") or message.startswith("Numeric parameter cannot be empty"):
+            return FormulaErrorFeedback(
+                message="存在空参数，无法完成公式校验。",
+                title="参数不能为空",
+                detail="某个函数参数在计算时为空，常见于使用了缺失变量、空序列或不完整的函数调用。",
+                suggestions=["请检查函数入参是否填写完整，尤其是周期参数和引用变量。"],
+            )
+
+        invalid_param_match = re.search(r"Invalid (integer|numeric) parameter: (.+)$", message)
+        if invalid_param_match:
+            return FormulaErrorFeedback(
+                message=f"参数 `{invalid_param_match.group(2).strip()}` 不是合法数值。",
+                title="参数格式错误",
+                detail="某个周期或数值参数无法转成有效数字，请检查是否误写成文本、空值或带有非法字符。",
+                suggestions=["请把该参数改成纯数字，例如 `5`、`14`、`2.5`。"],
+            )
+
+        return FormulaErrorFeedback(
+            message=f"公式校验未通过：{message}",
+            title="公式校验未通过",
+            detail="公式未能通过当前规则校验，但未命中预设错误分类。请结合报错原文逐项检查字段名、函数名、括号和赋值语句。",
+            suggestions=["如为同花顺公式，请优先检查 `:=` 赋值、`XG:` 输出和绘图语句是否书写规范。"],
+        )
 
     def _build_context(self, df: pd.DataFrame, runtime_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         prepared = df.copy()

@@ -1019,6 +1019,7 @@ const StockScreenerPage: React.FC = () => {
     if (!formulaValidation?.functionUsage) return [] as Array<[string, number]>;
     return Object.entries(formulaValidation.functionUsage).sort((a, b) => b[1] - a[1]);
   }, [formulaValidation]);
+  const formulaMeaningBreakdown = useMemo(() => formulaValidation?.meaningBreakdown ?? [], [formulaValidation]);
   const isFormulaEnabled = scanMode === 'formula' || scanMode === 'hybrid';
   const isConditionEnabled = scanMode === 'condition' || scanMode === 'hybrid';
 
@@ -1369,6 +1370,19 @@ const StockScreenerPage: React.FC = () => {
                     <span className="text-secondary-text">{formulaSummary}</span>
                   </div>
                   <div className="font-mono text-white">{formulaValidation.normalizedFormula}</div>
+                  {formulaValidation.meaning ? (
+                    <div className="space-y-1 rounded-2xl border border-white/8 bg-black/15 p-3">
+                      <div className="text-white">公式含义</div>
+                      <div className="text-secondary-text">{formulaValidation.meaning}</div>
+                      {formulaMeaningBreakdown.length ? (
+                        <div className="space-y-1 text-secondary-text">
+                          {formulaMeaningBreakdown.map((item) => (
+                            <div key={item}>- {item}</div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
                     {formulaComplexity ? <Badge variant={formulaComplexity.variant}>{formulaComplexity.label}</Badge> : null}
                     {typeof formulaValidation.complexityScore === 'number' ? (
@@ -1414,13 +1428,27 @@ const StockScreenerPage: React.FC = () => {
 
             {formulaValidation && !formulaValidation.valid ? (
               <Card className="border border-warning/20 bg-warning/10">
-                <div className="space-y-2 text-sm">
+                <div className="space-y-3 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="warning">公式未通过</Badge>
-                    <span className="text-white">{formulaValidation.message}</span>
+                    <span className="text-white">{formulaValidation.errorTitle || '校验未通过'}</span>
                   </div>
+                  <div className="text-white">{formulaValidation.message}</div>
+                  {formulaValidation.errorDetail ? (
+                    <div className="rounded-2xl border border-white/8 bg-black/10 p-3 text-secondary-text">
+                      {formulaValidation.errorDetail}
+                    </div>
+                  ) : null}
                   {formulaValidation.normalizedFormula ? (
                     <div className="font-mono text-secondary-text">{formulaValidation.normalizedFormula}</div>
+                  ) : null}
+                  {formulaValidation.suggestions?.length ? (
+                    <div className="space-y-1 text-secondary-text">
+                      <div className="text-white">修正建议</div>
+                      {formulaValidation.suggestions.map((suggestion) => (
+                        <div key={suggestion}>- {suggestion}</div>
+                      ))}
+                    </div>
                   ) : null}
                 </div>
               </Card>

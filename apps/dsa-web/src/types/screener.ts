@@ -220,6 +220,10 @@ export interface FormulaValidationResponse {
   estimatedLookback: number;
   warnings: string[];
   suggestions?: string[];
+  meaning?: string;
+  meaningBreakdown?: string[];
+  errorTitle?: string | null;
+  errorDetail?: string | null;
 }
 
 export interface ScreenerFormulaTemplate {

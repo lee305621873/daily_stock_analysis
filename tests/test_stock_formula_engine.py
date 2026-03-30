@@ -36,6 +36,8 @@ class StockFormulaEngineTestCase(unittest.TestCase):
         self.assertIn("CLOSE", result.referenced_fields)
         self.assertIn("MA", result.functions)
         self.assertIn("RSI", result.functions)
+        self.assertIn("公式会在最新一个交易日", result.meaning)
+        self.assertTrue(any("上穿" in item for item in result.meaning_breakdown))
 
     def test_validate_formula_rejects_unsafe_identifier(self) -> None:
         with self.assertRaises(FormulaValidationError):
@@ -66,6 +68,14 @@ class StockFormulaEngineTestCase(unittest.TestCase):
 
         self.assertTrue(result.valid)
         self.assertIn("CLOSE", result.normalized_formula)
+
+    def test_validate_formula_supports_common_ths_boolean_symbols(self) -> None:
+        formula = "XG: C<>REF(C,1) && !NAMELIKE('*ST*');"
+        result = self.engine.validate(formula)
+
+        self.assertTrue(result.valid)
+        self.assertIn("!=", result.normalized_formula)
+        self.assertIn("not", result.normalized_formula.lower())
 
     def test_validate_formula_supports_ths_runtime_functions_and_ignores_draw_statements(self) -> None:
         formula = """
