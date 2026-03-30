@@ -93,6 +93,42 @@ _SCALAR_INDICATORS = {
 }
 _VALUATION_INDICATORS = {IndicatorKey.PE, IndicatorKey.PB}
 _GROWTH_INDICATORS = {IndicatorKey.ROE, IndicatorKey.REVENUE_YOY, IndicatorKey.NET_PROFIT_YOY}
+_FORMULA_RUNTIME_FUNCTIONS = {"DYNAINFO", "FINANCE", "NAMELIKE"}
+_FORMULA_DYNAINFO_CODES = {
+    3: "last_price",
+    4: "high",
+    5: "low",
+    6: "open_price",
+    7: "last_price",
+    8: "volume",
+    10: "amount",
+    11: "change_amount",
+    12: "change_pct",
+    35: "pb_ratio",
+    39: "pe_ratio",
+    40: "total_mv_e8",
+    41: "circ_mv_e8",
+}
+_FORMULA_FINANCE_CODES = {
+    # Shares/capital
+    1: "total_share_e8",
+    2: "float_share_e8",
+    6: "bps",
+    7: "float_share_e8",
+    # Quality/growth
+    30: "revenue_yoy",
+    33: "eps",
+    34: "bps",
+    35: "roe",
+    40: "net_profit_yoy",
+    46: "revenue_yoy",
+    47: "net_profit_yoy",
+    # Valuation/market value aliases
+    37: "total_mv_e8",
+    38: "circ_mv_e8",
+    41: "pe_ratio",
+    42: "pb_ratio",
+}
 
 
 def _ensure_screener_runtime_deps(require_requests: bool = False) -> None:
@@ -2846,9 +2882,21 @@ class StockScreenerService:
         is_formula_mode = request.mode in (ScreenerMode.FORMULA, ScreenerMode.HYBRID)
         is_condition_mode = request.mode in (ScreenerMode.CONDITION, ScreenerMode.HYBRID)
         matched: List[str] = []
+        formula_runtime_context: Optional[Dict[str, Any]] = None
 
         if is_formula_mode and request.formula:
-            formula_match = self._evaluate_formula(df, request.formula, request.formula_name, parsed_formula)
+            formula_runtime_context = self._build_formula_runtime_context(
+                basic=basic,
+                parsed_formula=parsed_formula,
+                heat=heat,
+            )
+            formula_match = self._evaluate_formula(
+                df,
+                request.formula,
+                request.formula_name,
+                parsed_formula,
+                runtime_context=formula_runtime_context,
+            )
             if not formula_match[0]:
                 return None
             matched.extend(formula_match[1])
@@ -2888,13 +2936,195 @@ class StockScreenerService:
         formula: str,
         formula_name: Optional[str],
         parsed_formula: Optional[FormulaParseResult] = None,
+        runtime_context: Optional[Dict[str, Any]] = None,
     ) -> Tuple[bool, List[str]]:
         try:
-            result = self._formula_engine.evaluate_parsed(parsed_formula or self._formula_engine.parse(formula), df)
+            result = self._formula_engine.evaluate_parsed(
+                parsed_formula or self._formula_engine.parse(formula),
+                df,
+                runtime_context=runtime_context,
+            )
         except FormulaValidationError as exc:
             raise ValueError(str(exc)) from exc
         description = formula_name.strip() if formula_name else result.description
         return result.matched, [description]
+
+    @staticmethod
+    def _normalize_formula_capital(raw_value: Any) -> Optional[float]:
+        value = _to_float_or_none(raw_value)
+        if value is None:
+            return None
+        # Most upstreams expose shares in "股". Convert to "亿股" when value is large.
+        if abs(value) >= 1_000_000:
+            return value / 100_000_000
+        return value
+
+    @staticmethod
+    def _normalize_formula_mv(raw_value: Any) -> Optional[float]:
+        value = _to_float_or_none(raw_value)
+        if value is None:
+            return None
+        # Market value in quote payload is usually 元; normalize to 亿元.
+        if abs(value) >= 100_000:
+            return value / 100_000_000
+        return value
+
+    def _build_formula_runtime_context(
+        self,
+        basic: StockBasic,
+        parsed_formula: Optional[FormulaParseResult],
+        heat: Optional[float],
+    ) -> Dict[str, Any]:
+        runtime_context: Dict[str, Any] = {
+            "STOCK_CODE": basic.code,
+            "STOCK_NAME": basic.name or self._resolve_name(basic.code),
+            "HEAT": heat,
+        }
+
+        if parsed_formula is None:
+            return runtime_context
+
+        formula_functions = {name.upper() for name in parsed_formula.functions or []}
+        if not formula_functions.intersection(_FORMULA_RUNTIME_FUNCTIONS):
+            return runtime_context
+
+        manager = self._get_manager()
+        quote = None
+        pe_ratio: Optional[float] = None
+        pb_ratio: Optional[float] = None
+        last_price: Optional[float] = None
+        circ_mv: Optional[float] = None
+        total_mv: Optional[float] = None
+        quote_metrics: Dict[str, Optional[float]] = {}
+        if "DYNAINFO" in formula_functions or "FINANCE" in formula_functions:
+            try:
+                quote = manager.get_realtime_quote(basic.code)
+            except Exception as exc:
+                logger.debug(
+                    "[Screener] failed to load formula runtime quote for %s: %s",
+                    basic.code,
+                    exc,
+                    exc_info=True,
+                )
+                quote = None
+            quote_metrics = {
+                "last_price": _to_float_or_none(getattr(quote, "price", None)) if quote is not None else None,
+                "high": _to_float_or_none(getattr(quote, "high", None)) if quote is not None else None,
+                "low": _to_float_or_none(getattr(quote, "low", None)) if quote is not None else None,
+                "open_price": _to_float_or_none(getattr(quote, "open_price", None)) if quote is not None else None,
+                "volume": _to_float_or_none(getattr(quote, "volume", None)) if quote is not None else None,
+                "amount": _to_float_or_none(getattr(quote, "amount", None)) if quote is not None else None,
+                "change_amount": _to_float_or_none(getattr(quote, "change_amount", None)) if quote is not None else None,
+                "change_pct": _to_float_or_none(getattr(quote, "change_pct", None)) if quote is not None else None,
+                "pe_ratio": _to_float_or_none(getattr(quote, "pe_ratio", None)) if quote is not None else None,
+                "pb_ratio": _to_float_or_none(getattr(quote, "pb_ratio", None)) if quote is not None else None,
+                "total_mv": _to_float_or_none(getattr(quote, "total_mv", None)) if quote is not None else None,
+                "circ_mv": _to_float_or_none(getattr(quote, "circ_mv", None)) if quote is not None else None,
+            }
+            pe_ratio = quote_metrics.get("pe_ratio")
+            pb_ratio = quote_metrics.get("pb_ratio")
+            last_price = quote_metrics.get("last_price")
+            circ_mv = quote_metrics.get("circ_mv")
+            total_mv = quote_metrics.get("total_mv")
+
+        if "FINANCE" not in formula_functions:
+            if "DYNAINFO" in formula_functions:
+                dynainfo_values: Dict[str, Optional[float]] = dict(quote_metrics)
+                dynainfo_values["total_mv_e8"] = self._normalize_formula_mv(total_mv)
+                dynainfo_values["circ_mv_e8"] = self._normalize_formula_mv(circ_mv)
+                for code, metric_key in _FORMULA_DYNAINFO_CODES.items():
+                    runtime_context[f"DYNAINFO_{code}"] = dynainfo_values.get(metric_key)
+            return runtime_context
+
+        context = {}
+        try:
+            context = manager.get_fundamental_context(basic.code)
+        except Exception as exc:
+            logger.debug(
+                "[Screener] failed to load formula runtime fundamental context for %s: %s",
+                basic.code,
+                exc,
+                exc_info=True,
+            )
+
+        valuation_payload = self._extract_context_data_block(context, "valuation")
+        growth_payload = self._extract_context_data_block(context, "growth")
+
+        revenue_yoy = _to_float_or_none(growth_payload.get("revenue_yoy"))
+        net_profit_yoy = _to_float_or_none(growth_payload.get("net_profit_yoy"))
+        roe = _to_float_or_none(growth_payload.get("roe"))
+
+        if last_price is None:
+            last_price = _to_float_or_none(valuation_payload.get("latest_price"))
+        if pe_ratio is None:
+            pe_ratio = _to_float_or_none(valuation_payload.get("pe_ratio"))
+        if pb_ratio is None:
+            pb_ratio = _to_float_or_none(valuation_payload.get("pb_ratio"))
+        if total_mv is None:
+            total_mv = _to_float_or_none(valuation_payload.get("total_mv"))
+        if circ_mv is None:
+            circ_mv = _to_float_or_none(valuation_payload.get("circ_mv"))
+
+        eps = _to_float_or_none(growth_payload.get("eps"))
+        if eps is None:
+            eps = _to_float_or_none(growth_payload.get("basic_eps"))
+        if eps is None and last_price is not None and pe_ratio is not None and pe_ratio > 0:
+            eps = last_price / pe_ratio
+
+        bps = _to_float_or_none(valuation_payload.get("bps"))
+        if bps is None:
+            bps = _to_float_or_none(valuation_payload.get("net_asset_per_share"))
+        if bps is None and eps is not None and roe is not None and roe > 0:
+            bps = eps / (roe / 100.0)
+        if bps is None and last_price is not None and pb_ratio is not None and pb_ratio > 0:
+            bps = last_price / pb_ratio
+
+        capital = self._normalize_formula_capital(valuation_payload.get("float_share"))
+        if capital is None:
+            capital = self._normalize_formula_capital(valuation_payload.get("circulating_shares"))
+        if capital is None and circ_mv is not None and last_price is not None and last_price > 0:
+            capital = circ_mv / last_price / 100_000_000
+
+        total_share = self._normalize_formula_capital(valuation_payload.get("total_share"))
+        if total_share is None:
+            total_share = self._normalize_formula_capital(valuation_payload.get("total_shares"))
+        if total_share is None and total_mv is not None and last_price is not None and last_price > 0:
+            total_share = total_mv / last_price / 100_000_000
+
+        total_mv_e8 = self._normalize_formula_mv(total_mv)
+        circ_mv_e8 = self._normalize_formula_mv(circ_mv)
+
+        finance_metric_values: Dict[str, Optional[float]] = {
+            "total_share_e8": total_share,
+            "float_share_e8": capital,
+            "eps": eps,
+            "bps": bps,
+            "roe": roe,
+            "revenue_yoy": revenue_yoy,
+            "net_profit_yoy": net_profit_yoy,
+            "pe_ratio": pe_ratio,
+            "pb_ratio": pb_ratio,
+            "total_mv_e8": total_mv_e8,
+            "circ_mv_e8": circ_mv_e8,
+        }
+        for code, metric_key in _FORMULA_FINANCE_CODES.items():
+            runtime_context[f"FINANCE_{code}"] = finance_metric_values.get(metric_key)
+
+        if "DYNAINFO" in formula_functions:
+            dynainfo_values: Dict[str, Optional[float]] = dict(quote_metrics)
+            dynainfo_values.update(
+                {
+                    "last_price": last_price,
+                    "pe_ratio": pe_ratio,
+                    "pb_ratio": pb_ratio,
+                    "total_mv_e8": total_mv_e8,
+                    "circ_mv_e8": circ_mv_e8,
+                }
+            )
+            for code, metric_key in _FORMULA_DYNAINFO_CODES.items():
+                runtime_context[f"DYNAINFO_{code}"] = dynainfo_values.get(metric_key)
+
+        return runtime_context
 
     def _compute_heat(self, df: pd.DataFrame) -> Optional[float]:
         try:

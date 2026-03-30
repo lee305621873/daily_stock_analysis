@@ -67,6 +67,69 @@ class StockFormulaEngineTestCase(unittest.TestCase):
         self.assertTrue(result.valid)
         self.assertIn("CLOSE", result.normalized_formula)
 
+    def test_validate_formula_supports_ths_runtime_functions_and_ignores_draw_statements(self) -> None:
+        formula = """
+        {THS style script}
+        PE:=DYNAINFO(39);
+        PB:=DYNAINFO(35);
+        XG: PE < 15 AND PB < 2 AND NOT NAMELIKE('*ST*');
+        DRAWICON(XG, LOW*0.95, 1);
+        DRAWTEXT(XG, HIGH*1.05, '低估高ROE'), COLORRED;
+        XG;
+        """
+        result = self.engine.validate(formula)
+
+        self.assertTrue(result.valid)
+        self.assertIn("DYNAINFO", result.functions)
+        self.assertIn("NAMELIKE", result.functions)
+        self.assertNotIn("DRAWICON", result.normalized_formula.upper())
+
+    def test_evaluate_formula_supports_runtime_context_for_finance_dynainfo_namelike(self) -> None:
+        formula = (
+            "PE:=DYNAINFO(39);"
+            "PB:=DYNAINFO(35);"
+            "ROE:=FINANCE(33)/FINANCE(34)*100;"
+            "XG: PE<15 AND PB<2 AND ROE>10 AND NOT NAMELIKE('*ST*');"
+        )
+        result = self.engine.evaluate(
+            formula,
+            self.df,
+            runtime_context={
+                "DYNAINFO_39": 12.0,
+                "DYNAINFO_35": 1.2,
+                "FINANCE_33": 2.0,
+                "FINANCE_34": 10.0,
+                "STOCK_NAME": "测试股份",
+            },
+        )
+
+        self.assertTrue(result.matched)
+
+    def test_validate_formula_supports_multiline_xg_with_draw_and_color_statements(self) -> None:
+        formula = """
+        {低估值高ROE高成长选股公式}
+        PE:=DYNAINFO(39);
+        PB:=DYNAINFO(35);
+        ROE:=FINANCE(33)/FINANCE(34)*100;
+        MA20:=MA(CLOSE,20);
+        VOL5:=MA(VOL,5);
+        XG:
+            PE<15
+            AND PB<1.5
+            AND ROE>15
+            AND CLOSE>MA20
+            AND VOL>VOL5*1.2
+            AND NOT(NAMELIKE('*ST') OR NAMELIKE('退*'));
+        DRAWICON(XG, LOW*0.95, 1);
+        DRAWTEXT(XG, HIGH*1.05, '低估高ROE'), COLORRED;
+        XG
+        """
+        result = self.engine.validate(formula)
+
+        self.assertTrue(result.valid)
+        self.assertIn("NAMELIKE", result.functions)
+        self.assertNotIn("DRAWICON", result.normalized_formula.upper())
+
 
 if __name__ == "__main__":
     unittest.main()

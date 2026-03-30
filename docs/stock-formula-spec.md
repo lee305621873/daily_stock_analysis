@@ -22,6 +22,40 @@ Short aliases are also supported and normalized automatically:
 - `C -> CLOSE`
 - `V -> VOL`
 
+## Runtime compatibility helpers (THS/TDX style)
+
+- `DYNAINFO(n)`:
+  - currently supports:
+    - `3/7`: latest price
+    - `4`: high
+    - `5`: low
+    - `6`: open
+    - `8`: volume
+    - `10`: amount
+    - `11`: change amount
+    - `12`: change percent
+    - `35`: PB
+    - `39`: dynamic PE
+    - `40`: total market value (亿元)
+    - `41`: circulating market value (亿元)
+- `FINANCE(n)`:
+  - currently supports:
+    - `1`: total shares (亿股)
+    - `2/7`: circulating shares (亿股)
+    - `6/34`: BPS / net asset per share
+    - `30/46`: revenue YoY (%)
+    - `33`: EPS
+    - `35`: ROE (%)
+    - `40/47`: net profit YoY (%)
+    - `37`: total market value (亿元)
+    - `38`: circulating market value (亿元)
+    - `41`: PE
+    - `42`: PB
+- `NAMELIKE(pattern)`:
+  - wildcard stock-name matching (`*`/`?`)
+- Drawing/style statements are ignored during screener execution:
+  - `DRAWICON(...)`, `DRAWTEXT(...)`, `DRAWTEXT_FIX(...)`, `DRAWNUMBER(...)`, `STICKLINE(...)`, `PLOYLINE/POLYLINE(...)`, `DRAWLINE(...)`, `DRAWRECTREL(...)`, `DRAWBAND(...)`, standalone `COLOR*`
+
 ## Operators
 
 - Arithmetic: `+`, `-`, `*`, `/`, `%`, `**`

@@ -50,7 +50,20 @@ class _FakeManager:
         return [{"name": "白酒"}]
 
     def get_realtime_quote(self, code: str):
-        return types.SimpleNamespace(pe_ratio=18.0, pb_ratio=2.1)
+        return types.SimpleNamespace(
+            pe_ratio=18.0,
+            pb_ratio=2.1,
+            price=120.0,
+            high=123.5,
+            low=118.8,
+            open_price=119.6,
+            volume=1_560_000.0,
+            amount=185_000_000.0,
+            change_amount=2.3,
+            change_pct=1.95,
+            total_mv=60_000_000_000.0,
+            circ_mv=30_000_000_000.0,
+        )
 
     def get_fundamental_context(self, code: str, budget_seconds: float | None = None):
         return {
@@ -74,6 +87,11 @@ class _HintAwareManager(_FakeManager):
     ):
         self.preferred_fetchers.append(preferred_fetcher)
         return super().get_daily_data(stock_code, days=days)
+
+
+class _StNameManager(_FakeManager):
+    def get_stock_name(self, code: str) -> str:
+        return "*ST示例"
 
 
 def _request(**kwargs) -> ScreenerScanRequest:
@@ -742,6 +760,81 @@ class StockScreenerServiceTestCase(unittest.TestCase):
 
         self.assertEqual(result.total, 1)
         self.assertEqual(result.results[0].code, "AAPL")
+
+    def test_scan_formula_mode_supports_ths_runtime_functions(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        result = service.scan(
+            ScreenerScanRequest(
+                mode="formula",
+                formula=(
+                    "PE:=DYNAINFO(39);"
+                    "PB:=DYNAINFO(35);"
+                    "CAPITAL:=FINANCE(7);"
+                    "XG:PE<20 AND PB<3 AND CAPITAL<50;"
+                ),
+                market="us",
+                codes=["AAPL"],
+                export_csv=False,
+            )
+        )
+
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.results[0].code, "AAPL")
+
+    def test_scan_formula_mode_supports_extended_finance_codes(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        result = service.scan(
+            ScreenerScanRequest(
+                mode="formula",
+                formula=(
+                    "XG:FINANCE(1)>0 AND FINANCE(2)>0 AND FINANCE(35)>0 "
+                    "AND FINANCE(37)>0 AND FINANCE(38)>0 AND FINANCE(41)>0 AND FINANCE(42)>0;"
+                ),
+                market="us",
+                codes=["AAPL"],
+                export_csv=False,
+            )
+        )
+
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.results[0].code, "AAPL")
+
+    def test_scan_formula_mode_supports_extended_dynainfo_codes(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        result = service.scan(
+            ScreenerScanRequest(
+                mode="formula",
+                formula=(
+                    "XG:DYNAINFO(3)>0 AND DYNAINFO(4)>DYNAINFO(5) AND DYNAINFO(8)>0 "
+                    "AND DYNAINFO(10)>0 AND DYNAINFO(11)>-50 AND DYNAINFO(12)>-20 "
+                    "AND DYNAINFO(40)>0 AND DYNAINFO(41)>0;"
+                ),
+                market="us",
+                codes=["AAPL"],
+                export_csv=False,
+            )
+        )
+
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.results[0].code, "AAPL")
+
+    def test_scan_formula_mode_supports_namelike_filter(self) -> None:
+        service = StockScreenerService(manager=_StNameManager())
+
+        result = service.scan(
+            ScreenerScanRequest(
+                mode="formula",
+                formula="XG: NOT NAMELIKE('*ST*') AND CLOSE > MA(CLOSE, 5);",
+                market="cn",
+                codes=["600519"],
+                export_csv=False,
+            )
+        )
+
+        self.assertEqual(result.total, 0)
 
     def test_scan_hybrid_mode_requires_formula_and_conditions_together(self) -> None:
         service = StockScreenerService(manager=_FakeManager())

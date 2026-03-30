@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import difflib
+import fnmatch
 import operator
 import re
 from dataclasses import dataclass
@@ -381,6 +382,12 @@ def _formula_roc(value: Any, period: Any = 12) -> pd.Series:
     return (series - previous) / previous.replace(0, np.nan) * 100
 
 
+def _formula_runtime_only(*_args: Any, **_kwargs: Any) -> float:
+    # Runtime-only functions (e.g. FINANCE/DYNAINFO/NAMELIKE) are injected
+    # via _build_context with stock-specific closures.
+    return float("nan")
+
+
 FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "REF": _formula_ref,
     "MA": _formula_ma,
@@ -411,6 +418,9 @@ FUNCTIONS: Dict[str, Callable[..., Any]] = {
     "OBV": _formula_obv,
     "MFI": _formula_mfi,
     "ROC": _formula_roc,
+    "DYNAINFO": _formula_runtime_only,
+    "FINANCE": _formula_runtime_only,
+    "NAMELIKE": _formula_runtime_only,
 }
 
 
@@ -660,6 +670,39 @@ FUNCTION_CATALOG: List[FormulaFunctionMeta] = [
         returns="bool_series",
         examples=["CROSS(MA(CLOSE, 5), MA(CLOSE, 20))"],
     ),
+    FormulaFunctionMeta(
+        name="DYNAINFO",
+        category="runtime",
+        summary="Runtime quote lookup by compatibility code",
+        signature="DYNAINFO(code)",
+        returns="series",
+        examples=["DYNAINFO(39) < 20", "DYNAINFO(35) < 2"],
+        params=[
+            FormulaFunctionParamMeta(name="code", type="int", description="Compatibility field code"),
+        ],
+    ),
+    FormulaFunctionMeta(
+        name="FINANCE",
+        category="runtime",
+        summary="Runtime fundamental lookup by compatibility code",
+        signature="FINANCE(code)",
+        returns="series",
+        examples=["FINANCE(33) > 0", "FINANCE(40) > 0"],
+        params=[
+            FormulaFunctionParamMeta(name="code", type="int", description="Compatibility field code"),
+        ],
+    ),
+    FormulaFunctionMeta(
+        name="NAMELIKE",
+        category="runtime",
+        summary="Wildcard stock-name match",
+        signature="NAMELIKE(pattern)",
+        returns="bool_series",
+        examples=["NOT NAMELIKE('*ST*')", "NAMELIKE('中*')"],
+        params=[
+            FormulaFunctionParamMeta(name="pattern", type="string", description="Wildcard pattern"),
+        ],
+    ),
 ]
 
 
@@ -811,14 +854,24 @@ class StockFormulaEngine:
             estimated_lookback=estimated_lookback,
         )
 
-    def evaluate(self, formula: str, df: pd.DataFrame) -> FormulaScanMatch:
+    def evaluate(
+        self,
+        formula: str,
+        df: pd.DataFrame,
+        runtime_context: Optional[Dict[str, Any]] = None,
+    ) -> FormulaScanMatch:
         self._ensure_runtime_deps()
         parsed = self.parse(formula)
-        return self.evaluate_parsed(parsed, df)
+        return self.evaluate_parsed(parsed, df, runtime_context=runtime_context)
 
-    def evaluate_parsed(self, parsed: FormulaParseResult, df: pd.DataFrame) -> FormulaScanMatch:
+    def evaluate_parsed(
+        self,
+        parsed: FormulaParseResult,
+        df: pd.DataFrame,
+        runtime_context: Optional[Dict[str, Any]] = None,
+    ) -> FormulaScanMatch:
         self._ensure_runtime_deps()
-        context = self._build_context(df)
+        context = self._build_context(df, runtime_context=runtime_context)
         value = self._eval_node(parsed.tree.body, context, df.index)
         truth_series = _series_truth(value, df.index)
         cleaned = truth_series.dropna()
@@ -827,6 +880,7 @@ class StockFormulaEngine:
 
     def _normalize_formula(self, formula: str) -> str:
         normalized = (formula or "").strip()
+        normalized = self._strip_tdx_comments(normalized)
         normalized = normalized.replace("，", ",").replace("（", "(").replace("）", ")")
         normalized = normalized.replace("；", ";").replace("：", ":")
         normalized = normalized.replace("＋", "+").replace("－", "-").replace("×", "*").replace("÷", "/")
@@ -856,6 +910,14 @@ class StockFormulaEngine:
             compacted = re.sub(pattern, keyword, compacted, flags=re.IGNORECASE)
         return compacted
 
+    @staticmethod
+    def _strip_tdx_comments(formula: str) -> str:
+        # TongHuaShun/TDX style comments: { ... }
+        cleaned = re.sub(r"\{[^{}]*\}", " ", formula, flags=re.DOTALL)
+        # Keep compatibility with line comments if users paste mixed scripts.
+        cleaned = re.sub(r"//.*", " ", cleaned)
+        return cleaned
+
     def _normalize_tdx_formula(self, formula: str) -> str:
         statements = [segment.strip() for segment in re.split(r";+", formula) if segment.strip()]
         if not statements:
@@ -867,6 +929,9 @@ class StockFormulaEngine:
         reserved = set(FIELD_NAMES).union(FUNCTIONS.keys()).union({"AND", "OR", "NOT", "TRUE", "FALSE"})
 
         for statement in statements:
+            statement_upper = statement.upper()
+            if self._is_draw_statement(statement_upper) or self._is_style_statement(statement_upper):
+                continue
             if ":=" in statement:
                 var_name, expression = statement.split(":=", 1)
                 var_name = var_name.strip()
@@ -883,9 +948,17 @@ class StockFormulaEngine:
                     assignment_order.append(upper_var_name)
                 continue
 
-            label_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)$", statement)
+            label_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([\s\S]+)$", statement)
             if label_match:
-                final_expression = label_match.group(2).strip()
+                label_name = label_match.group(1).strip()
+                expression = label_match.group(2).strip()
+                upper_label_name = label_name.upper()
+                # Keep XG-like labels addressable for trailing "XG;" style.
+                if upper_label_name not in reserved:
+                    assignments[upper_label_name] = expression
+                    if upper_label_name not in assignment_order:
+                        assignment_order.append(upper_label_name)
+                final_expression = expression
                 continue
             final_expression = statement
 
@@ -911,6 +984,26 @@ class StockFormulaEngine:
             return f"({expanded})"
 
         return token_pattern.sub(_replace, expression)
+
+    @staticmethod
+    def _is_draw_statement(statement_upper: str) -> bool:
+        draw_prefixes = (
+            "DRAWICON(",
+            "DRAWTEXT(",
+            "DRAWTEXT_FIX(",
+            "DRAWNUMBER(",
+            "STICKLINE(",
+            "PLOYLINE(",
+            "POLYLINE(",
+            "DRAWLINE(",
+            "DRAWRECTREL(",
+            "DRAWBAND(",
+        )
+        return statement_upper.startswith(draw_prefixes)
+
+    @staticmethod
+    def _is_style_statement(statement_upper: str) -> bool:
+        return bool(re.fullmatch(r"COLOR[A-Z0-9_]+", statement_upper))
 
     def _build_warnings(self, parsed: FormulaParseResult) -> List[str]:
         warnings: List[str] = []
@@ -965,7 +1058,7 @@ class StockFormulaEngine:
             return self.DEFAULT_LOOKBACK
         return self.DEFAULT_LOOKBACK
 
-    def _build_context(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def _build_context(self, df: pd.DataFrame, runtime_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         prepared = df.copy()
         if "date" in prepared.columns:
             prepared["date"] = pd.to_datetime(prepared["date"])
@@ -985,7 +1078,47 @@ class StockFormulaEngine:
             "FALSE": False,
         }
         context.update(FUNCTIONS)
+        runtime = runtime_context or {}
+        context["DYNAINFO"] = self._build_dynainfo_runtime_fn(runtime, index)
+        context["FINANCE"] = self._build_finance_runtime_fn(runtime, index)
+        context["NAMELIKE"] = self._build_namelike_runtime_fn(runtime, index)
         return context
+
+    @staticmethod
+    def _runtime_value_to_series(value: Any, index: pd.Index) -> pd.Series:
+        if value is None:
+            value = float("nan")
+        return _ensure_series(value, index)
+
+    def _build_dynainfo_runtime_fn(self, runtime: Dict[str, Any], index: pd.Index) -> Callable[[Any], pd.Series]:
+        def _dynainfo(field_id: Any) -> pd.Series:
+            key = f"DYNAINFO_{_scalar_int(field_id)}"
+            return self._runtime_value_to_series(runtime.get(key), index)
+
+        return _dynainfo
+
+    def _build_finance_runtime_fn(self, runtime: Dict[str, Any], index: pd.Index) -> Callable[[Any], pd.Series]:
+        def _finance(field_id: Any) -> pd.Series:
+            key = f"FINANCE_{_scalar_int(field_id)}"
+            return self._runtime_value_to_series(runtime.get(key), index)
+
+        return _finance
+
+    @staticmethod
+    def _to_pattern(raw: Any) -> str:
+        text = str(raw or "")
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
+            text = text[1:-1]
+        return text.strip()
+
+    def _build_namelike_runtime_fn(self, runtime: Dict[str, Any], index: pd.Index) -> Callable[[Any], pd.Series]:
+        def _namelike(pattern: Any) -> pd.Series:
+            stock_name = str(runtime.get("STOCK_NAME", "") or "")
+            wildcard = self._to_pattern(pattern)
+            matched = fnmatch.fnmatchcase(stock_name.upper(), wildcard.upper())
+            return self._runtime_value_to_series(bool(matched), index)
+
+        return _namelike
 
     def _eval_node(self, node: ast.AST, context: Dict[str, Any], index: pd.Index) -> Any:
         if isinstance(node, ast.Constant):

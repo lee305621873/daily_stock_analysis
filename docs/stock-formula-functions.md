@@ -44,6 +44,28 @@
 - `EXIST(condition, period)`: any bar true in window
 - `BARSLAST(condition)`: bars since last true signal
 
+## Runtime helpers (THS/TDX compatibility)
+
+- `DYNAINFO(3/7)`: latest price
+- `DYNAINFO(4/5/6)`: high / low / open
+- `DYNAINFO(8/10)`: volume / amount
+- `DYNAINFO(11/12)`: change amount / change percent
+- `DYNAINFO(35/39)`: PB / dynamic PE
+- `DYNAINFO(40/41)`: total / circulating market value (亿元)
+- `FINANCE(1)`: total shares (亿股)
+- `FINANCE(2/7)`: circulating shares (亿股)
+- `FINANCE(6/34)`: BPS / net asset per share
+- `FINANCE(30/46)`: revenue YoY (%)
+- `FINANCE(33)`: EPS (with fallback derivation)
+- `FINANCE(35)`: ROE (%)
+- `FINANCE(40/47)`: net profit YoY (%)
+- `FINANCE(37/38)`: total / circulating market value (亿元)
+- `FINANCE(41/42)`: PE / PB
+- `NAMELIKE(pattern)`: wildcard name match (`*`, `?`)
+
+> Compatibility note:
+> drawing/style statements (`DRAW*`, `COLOR*`) are accepted in pasted formulas but ignored for screener decisions.
+
 ## Example library
 
 ### MA cross
