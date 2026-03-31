@@ -885,6 +885,7 @@ class StockScreenerService:
 
     def __init__(self, manager=None):
         self._manager = manager
+        self._manager_lock = threading.Lock()
         self._storage = None
         config = get_config()
         configured_scan_workers = int(getattr(config, "stock_screener_max_workers", 16) or 16)
@@ -896,10 +897,13 @@ class StockScreenerService:
         self._formula_engine = StockFormulaEngine()
 
     def _get_manager(self):
-        if self._manager is None:
-            from data_provider import DataFetcherManager  # type: ignore
+        if self._manager is not None:
+            return self._manager
+        with self._manager_lock:
+            if self._manager is None:
+                from data_provider import DataFetcherManager  # type: ignore
 
-            self._manager = DataFetcherManager()
+                self._manager = DataFetcherManager()
         return self._manager
 
     def _get_storage(self):

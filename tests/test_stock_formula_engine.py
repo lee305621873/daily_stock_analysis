@@ -115,6 +115,19 @@ class StockFormulaEngineTestCase(unittest.TestCase):
 
         self.assertTrue(result.matched)
 
+    def test_evaluate_formula_aligns_runtime_series_index_before_comparison(self) -> None:
+        df = self.df.copy()
+        df.index = pd.Index(range(100, 140))
+        runtime_series = pd.Series([9.0] * len(df), index=pd.Index(list(reversed(df.index))))
+
+        result = self.engine.evaluate(
+            "CLOSE > DYNAINFO(39)",
+            df,
+            runtime_context={"DYNAINFO_39": runtime_series},
+        )
+
+        self.assertTrue(result.matched)
+
     def test_validate_formula_supports_multiline_xg_with_draw_and_color_statements(self) -> None:
         formula = """
         {低估值高ROE高成长选股公式}

@@ -74,7 +74,10 @@ class FormulaStruct:
 
 def _ensure_series(value: Any, index: pd.Index) -> pd.Series:
     if isinstance(value, pd.Series):
-        return value.astype(float) if value.dtype == bool else value
+        series = value
+        if not series.index.equals(index):
+            series = series.reindex(index)
+        return series.astype(float) if series.dtype == bool else series
     if isinstance(value, (int, float, bool, np.number)):
         return pd.Series([value] * len(index), index=index)
     raise FormulaValidationError(f"Expected numeric series/scalar, got {type(value).__name__}")

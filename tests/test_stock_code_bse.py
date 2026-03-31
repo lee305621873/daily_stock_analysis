@@ -110,6 +110,14 @@ class TestTushareConvertStockCode(unittest.TestCase):
         self.assertEqual(fetcher._convert_stock_code("838163"), "838163.BJ")
         self.assertEqual(fetcher._convert_stock_code("430047"), "430047.BJ")
 
+    def test_regular_a_share_prefixes_map_to_expected_exchange(self):
+        """Common Shanghai/Shenzhen prefixes should map to the right suffix."""
+        fetcher = TushareFetcher()
+        self.assertEqual(fetcher._convert_stock_code("605050"), "605050.SH")
+        self.assertEqual(fetcher._convert_stock_code("301268"), "301268.SZ")
+        self.assertEqual(fetcher._convert_stock_code("001266"), "001266.SZ")
+        self.assertEqual(fetcher._convert_stock_code("003816"), "003816.SZ")
+
 
 @unittest.skipIf(not _AKSHARE_IMPORTS_OK, f"akshare fetcher imports failed: {_AKSHARE_IMPORT_ERROR}")
 class TestAkshareToSinaTxSymbol(unittest.TestCase):

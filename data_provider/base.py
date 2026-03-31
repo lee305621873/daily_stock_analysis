@@ -16,7 +16,9 @@
 
 import logging
 import random
+import re
 import time
+from contextlib import nullcontext
 from threading import BoundedSemaphore, RLock, Thread
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -38,6 +40,12 @@ logger = logging.getLogger(__name__)
 # `FATAL:address_pool_manager.cc ... Check failed: !pool->IsInitialized()`.
 # Serialize AkShare daily-data calls to avoid that hard crash.
 _AKSHARE_DAILY_DATA_LOCK = RLock()
+_TUSHARE_DAILY_ERROR_COOLDOWN_SECONDS = 180.0
+_TUSHARE_SERVER_ERROR_PATTERN = re.compile(r"Tushare API HTTP 5\d\d\b", re.IGNORECASE)
+_EASTMONEY_DAILY_FAILURE_PATTERN = re.compile(
+    r"Eastmoney 历史K线接口失败: .*category=(remote_disconnect|rate_limit_or_anti_bot)",
+    re.IGNORECASE,
+)
 
 
 # === 标准化列名定义 ===
@@ -492,6 +500,77 @@ class DataFetcherManager:
         self._fundamental_cache_lock = RLock()
         self._fundamental_timeout_worker_limit = 8
         self._fundamental_timeout_slots = BoundedSemaphore(self._fundamental_timeout_worker_limit)
+        self._daily_source_cooldowns: Dict[str, float] = {}
+        self._daily_source_cooldowns_lock = RLock()
+
+    def _get_source_cooldown_remaining(self, fetcher_name: str) -> float:
+        """Return remaining cooldown seconds for a daily-data source."""
+        with self._daily_source_cooldowns_lock:
+            cooldown_until = float(self._daily_source_cooldowns.get(fetcher_name, 0.0) or 0.0)
+            if cooldown_until <= 0:
+                return 0.0
+            remaining = cooldown_until - time.time()
+            if remaining <= 0:
+                self._daily_source_cooldowns.pop(fetcher_name, None)
+                return 0.0
+            return remaining
+
+    def _open_source_cooldown(self, fetcher_name: str, seconds: float, reason: str) -> None:
+        """Open a temporary cooldown window for a daily-data source."""
+        if seconds <= 0:
+            return
+        with self._daily_source_cooldowns_lock:
+            now_ts = time.time()
+            current_until = float(self._daily_source_cooldowns.get(fetcher_name, 0.0) or 0.0)
+            cooldown_until = max(current_until, now_ts + seconds)
+            self._daily_source_cooldowns[fetcher_name] = cooldown_until
+            remaining = max(0.0, cooldown_until - now_ts)
+        logger.warning(
+            "[数据源熔断] [%s] 日线源进入冷却: duration=%.1fs, reason=%s",
+            fetcher_name,
+            remaining,
+            reason,
+        )
+
+    @staticmethod
+    def _should_open_tushare_daily_cooldown(exc: Exception) -> bool:
+        """Return True when the exception indicates a server-side Tushare outage."""
+        message = str(exc).strip()
+        if not message:
+            return False
+        return bool(_TUSHARE_SERVER_ERROR_PATTERN.search(message))
+
+    def _maybe_open_daily_source_cooldown(self, fetcher: BaseFetcher, exc: Exception) -> None:
+        """Open source cooldown when a known transient upstream failure is detected."""
+        if fetcher.name != "TushareFetcher":
+            return
+        if not self._should_open_tushare_daily_cooldown(exc):
+            return
+        self._open_source_cooldown(
+            fetcher.name,
+            _TUSHARE_DAILY_ERROR_COOLDOWN_SECONDS,
+            summarize_exception(exc)[1],
+        )
+
+    @staticmethod
+    def _build_next_fetcher_daily_hint(fetcher: BaseFetcher, exc: Exception) -> Optional[Dict[str, Any]]:
+        """
+        Build a one-hop hint for the next daily-data fetcher based on upstream failure family.
+
+        When Eastmoney fails in efinance, Akshare should skip its own EM path and go
+        directly to Sina/Tencent to avoid retrying the same upstream family.
+        """
+        if fetcher.name != "EfinanceFetcher":
+            return None
+        message = str(exc).strip()
+        if not message:
+            return None
+        if not _EASTMONEY_DAILY_FAILURE_PATTERN.search(message):
+            return None
+        return {
+            "skip_sources": ["em"],
+            "reason": "previous Eastmoney daily failure from EfinanceFetcher",
+        }
 
     def _get_fundamental_cache_key(self, stock_code: str, budget_seconds: Optional[float] = None) -> str:
         """生成基本面缓存 key（包含预算分桶以避免低预算结果污染高预算请求）。"""
@@ -744,11 +823,26 @@ class DataFetcherManager:
 
         errors = []
         ordered_fetchers = list(self._fetchers)
+        pending_daily_hints: Dict[str, Dict[str, Any]] = {}
         if preferred_fetcher:
             preferred_name = str(preferred_fetcher).strip().lower()
             preferred = next((item for item in ordered_fetchers if item.name.lower() == preferred_name), None)
             if preferred is not None:
                 ordered_fetchers = [preferred] + [item for item in ordered_fetchers if item is not preferred]
+        active_fetchers: List[BaseFetcher] = []
+        for fetcher in ordered_fetchers:
+            remaining = self._get_source_cooldown_remaining(fetcher.name)
+            if remaining > 0:
+                logger.info(
+                    "[数据源跳过] %s: [%s] 冷却中，remaining=%.1fs",
+                    stock_code,
+                    fetcher.name,
+                    remaining,
+                )
+                continue
+            active_fetchers.append(fetcher)
+        if active_fetchers:
+            ordered_fetchers = active_fetchers
         total_fetchers = len(ordered_fetchers)
         request_start = time.time()
 
@@ -791,6 +885,7 @@ class DataFetcherManager:
             raise DataFetchError(error_summary)
 
         for attempt, fetcher in enumerate(ordered_fetchers, start=1):
+            daily_hint = pending_daily_hints.pop(fetcher.name, None)
             try:
                 logger.info(f"[数据源尝试 {attempt}/{total_fetchers}] [{fetcher.name}] 获取 {stock_code}...")
                 df = self._call_fetcher_daily_data(
@@ -798,7 +893,8 @@ class DataFetcherManager:
                     stock_code=stock_code,
                     start_date=start_date,
                     end_date=end_date,
-                    days=days
+                    days=days,
+                    hint=daily_hint,
                 )
                 
                 if df is not None and not df.empty:
@@ -817,8 +913,19 @@ class DataFetcherManager:
                     f"error_type={error_type}, reason={error_reason}"
                 )
                 errors.append(error_msg)
+                self._maybe_open_daily_source_cooldown(fetcher, e)
                 if attempt < total_fetchers:
                     next_fetcher = ordered_fetchers[attempt]
+                    next_hint = self._build_next_fetcher_daily_hint(fetcher, e)
+                    if next_hint and next_fetcher.name == "AkshareFetcher":
+                        pending_daily_hints[next_fetcher.name] = next_hint
+                        logger.info(
+                            "[数据源提示] %s: [%s] -> [%s], hint=%s",
+                            stock_code,
+                            fetcher.name,
+                            next_fetcher.name,
+                            next_hint.get("skip_sources"),
+                        )
                     logger.info(f"[数据源切换] {stock_code}: [{fetcher.name}] -> [{next_fetcher.name}]")
                 # 继续尝试下一个数据源
                 continue
@@ -837,21 +944,27 @@ class DataFetcherManager:
         start_date: Optional[str],
         end_date: Optional[str],
         days: int,
+        hint: Optional[Dict[str, Any]] = None,
     ):
+        hint_ctx = nullcontext()
+        if hasattr(fetcher, "daily_data_hint"):
+            hint_ctx = fetcher.daily_data_hint(hint)  # type: ignore[attr-defined]
         if fetcher.name == "AkshareFetcher":
             with _AKSHARE_DAILY_DATA_LOCK:
-                return fetcher.get_daily_data(
-                    stock_code=stock_code,
-                    start_date=start_date,
-                    end_date=end_date,
-                    days=days,
-                )
-        return fetcher.get_daily_data(
-            stock_code=stock_code,
-            start_date=start_date,
-            end_date=end_date,
-            days=days,
-        )
+                with hint_ctx:
+                    return fetcher.get_daily_data(
+                        stock_code=stock_code,
+                        start_date=start_date,
+                        end_date=end_date,
+                        days=days,
+                    )
+        with hint_ctx:
+            return fetcher.get_daily_data(
+                stock_code=stock_code,
+                start_date=start_date,
+                end_date=end_date,
+                days=days,
+            )
     
     @property
     def available_fetchers(self) -> List[str]:

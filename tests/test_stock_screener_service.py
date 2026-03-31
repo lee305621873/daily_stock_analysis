@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
 import unittest
 import types
 from unittest.mock import MagicMock, patch
@@ -232,6 +235,24 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         )
 
         self.assertEqual([item.code for item in result], ["AAPL", "MSFT"])
+
+    def test_get_manager_is_thread_safe_and_reuses_single_instance(self) -> None:
+        service = StockScreenerService(manager=None)
+        created = []
+        created_lock = threading.Lock()
+
+        class _ConstructedManager:
+            def __init__(self) -> None:
+                with created_lock:
+                    created.append(self)
+                time.sleep(0.02)
+
+        with patch("data_provider.DataFetcherManager", side_effect=_ConstructedManager):
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                instances = list(executor.map(lambda _: service._get_manager(), range(8)))  # pylint: disable=protected-access
+
+        self.assertEqual(len(created), 1)
+        self.assertTrue(all(instance is created[0] for instance in instances))
 
     def test_tushare_query_uses_configured_api_url(self) -> None:
         service = StockScreenerService(manager=_FakeManager())

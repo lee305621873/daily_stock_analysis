@@ -10,8 +10,9 @@ TushareFetcher - 备用数据源 1 (Priority 2)
 
 流控策略：
 1. 实现"每分钟调用计数器"
-2. 超过配置配额时，强制休眠到下一分钟；配置为 0 时关闭本地分钟限流
-3. 使用 tenacity 实现指数退避重试
+2. 使用进程内共享请求槽位抑制瞬时并发突发
+3. 超过配置配额时，强制休眠到下一分钟；配置为 0 时关闭本地分钟限流
+4. 使用 tenacity 实现指数退避重试
 """
 
 import json as _json
@@ -19,6 +20,7 @@ import logging
 import re
 import time
 from datetime import datetime
+from threading import BoundedSemaphore, RLock
 from typing import Optional, Tuple, List, Dict, Any
 
 import pandas as pd
@@ -38,6 +40,9 @@ import os
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
+
+_TUSHARE_MAX_INFLIGHT_REQUESTS = 2
+_TUSHARE_REQUEST_SLOTS = BoundedSemaphore(_TUSHARE_MAX_INFLIGHT_REQUESTS)
 
 
 # ETF code prefixes by exchange
@@ -81,6 +86,7 @@ class TushareFetcher(BaseFetcher):
     
     关键策略：
     - 每分钟调用计数器，防止超出配额
+    - 进程内共享请求槽位，避免多线程瞬时突发
     - 超过配置的每分钟阈值时强制等待
     - 失败后指数退避重试
     
@@ -105,6 +111,7 @@ class TushareFetcher(BaseFetcher):
         self._call_count = 0  # 当前分钟内的调用次数
         self._minute_start: Optional[float] = None  # 当前计数周期开始时间
         self._api: Optional[object] = None  # Tushare API 实例
+        self._rate_limit_lock = RLock()
 
         # 尝试初始化 API
         self._init_api()
@@ -163,31 +170,34 @@ class TushareFetcher(BaseFetcher):
         setattr(self._api, "_DataApi__http_url", resolved_api_url)
 
         def patched_query(self_api, api_name, fields='', **kwargs):
-            req_params = {
-                'api_name': api_name,
-                'token': _token,
-                'params': kwargs,
-                'fields': fields,
-            }
-            endpoint_url = f"{resolved_api_url}/{api_name}"
-            res = requests.post(endpoint_url, json=req_params, timeout=_timeout)
-            if res.status_code != 200:
-                body_preview = (res.text or "").strip().replace("\n", "\\n")
-                if len(body_preview) > 300:
-                    body_preview = body_preview[:300] + "..."
-                if body_preview:
-                    raise Exception(
-                        f"Tushare API HTTP {res.status_code}, "
-                        f"url={endpoint_url}, response_body={body_preview}"
-                    )
-                raise Exception(f"Tushare API HTTP {res.status_code}, url={endpoint_url}")
-            result = _json.loads(res.text)
-            if result['code'] != 0:
-                raise Exception(result['msg'])
-            data = result['data']
-            columns = data['fields']
-            items = data['items']
-            return pd.DataFrame(items, columns=columns)
+            def do_request() -> pd.DataFrame:
+                req_params = {
+                    'api_name': api_name,
+                    'token': _token,
+                    'params': kwargs,
+                    'fields': fields,
+                }
+                endpoint_url = f"{resolved_api_url}/{api_name}"
+                res = requests.post(endpoint_url, json=req_params, timeout=_timeout)
+                if res.status_code != 200:
+                    body_preview = (res.text or "").strip().replace("\n", "\\n")
+                    if len(body_preview) > 300:
+                        body_preview = body_preview[:300] + "..."
+                    if body_preview:
+                        raise Exception(
+                            f"Tushare API HTTP {res.status_code}, "
+                            f"url={endpoint_url}, response_body={body_preview}"
+                        )
+                    raise Exception(f"Tushare API HTTP {res.status_code}, url={endpoint_url}")
+                result = _json.loads(res.text)
+                if result['code'] != 0:
+                    raise Exception(result['msg'])
+                data = result['data']
+                columns = data['fields']
+                items = data['items']
+                return pd.DataFrame(items, columns=columns)
+
+            return self._execute_api_request(api_name, do_request)
 
         self._api.query = types.MethodType(patched_query, self._api)
         logger.debug("Tushare API endpoint patched to %s", resolved_api_url)
@@ -234,38 +244,63 @@ class TushareFetcher(BaseFetcher):
         if self.rate_limit_per_minute <= 0:
             return
 
-        current_time = time.time()
-        
-        # 检查是否需要重置计数器（新的一分钟）
-        if self._minute_start is None:
-            self._minute_start = current_time
-            self._call_count = 0
-        elif current_time - self._minute_start >= 60:
-            # 已经过了一分钟，重置计数器
-            self._minute_start = current_time
-            self._call_count = 0
-            logger.debug("速率限制计数器已重置")
-        
-        # 检查是否超过配额
-        if self._call_count >= self.rate_limit_per_minute:
-            # 计算需要等待的时间（到下一分钟）
-            elapsed = current_time - self._minute_start
-            sleep_time = max(0, 60 - elapsed) + 1  # +1 秒缓冲
-            
-            logger.warning(
-                f"Tushare 达到速率限制 ({self._call_count}/{self.rate_limit_per_minute} 次/分钟)，"
-                f"等待 {sleep_time:.1f} 秒..."
+        with self._rate_limit_lock:
+            current_time = time.time()
+
+            # 检查是否需要重置计数器（新的一分钟）
+            if self._minute_start is None:
+                self._minute_start = current_time
+                self._call_count = 0
+            elif current_time - self._minute_start >= 60:
+                # 已经过了一分钟，重置计数器
+                self._minute_start = current_time
+                self._call_count = 0
+                logger.debug("速率限制计数器已重置")
+
+            # 检查是否超过配额
+            if self._call_count >= self.rate_limit_per_minute:
+                # 计算需要等待的时间（到下一分钟）
+                elapsed = current_time - self._minute_start
+                sleep_time = max(0, 60 - elapsed) + 1  # +1 秒缓冲
+
+                logger.warning(
+                    f"Tushare 达到速率限制 ({self._call_count}/{self.rate_limit_per_minute} 次/分钟)，"
+                    f"等待 {sleep_time:.1f} 秒..."
+                )
+
+                time.sleep(sleep_time)
+
+                # 重置计数器
+                self._minute_start = time.time()
+                self._call_count = 0
+
+            # 增加调用计数
+            self._call_count += 1
+            logger.debug(f"Tushare 当前分钟调用次数: {self._call_count}/{self.rate_limit_per_minute}")
+
+    def _execute_api_request(self, api_name: str, request_callable):
+        """
+        包装单次 Tushare Pro API 调用。
+
+        先申请共享请求槽位，再执行线程安全的分钟限流，避免多个线程在同一秒内
+        同时把请求打到代理 / Tushare 上游。
+        """
+        slot_wait_started = time.monotonic()
+        _TUSHARE_REQUEST_SLOTS.acquire()
+        slot_wait_seconds = time.monotonic() - slot_wait_started
+
+        if slot_wait_seconds >= 0.2:
+            logger.debug(
+                "Tushare 请求槽位等待 %.2fs: api=%s",
+                slot_wait_seconds,
+                api_name,
             )
-            
-            time.sleep(sleep_time)
-            
-            # 重置计数器
-            self._minute_start = time.time()
-            self._call_count = 0
-        
-        # 增加调用计数
-        self._call_count += 1
-        logger.debug(f"Tushare 当前分钟调用次数: {self._call_count}/{self.rate_limit_per_minute}")
+
+        try:
+            self._check_rate_limit()
+            return request_callable()
+        finally:
+            _TUSHARE_REQUEST_SLOTS.release()
     
     def _convert_stock_code(self, stock_code: str) -> str:
         """
@@ -300,11 +335,11 @@ class TushareFetcher(BaseFetcher):
             return f"{code}.BJ"
         
         # Regular stocks
-        # Shanghai: 600xxx, 601xxx, 603xxx, 688xxx (STAR Market)
-        # Shenzhen: 000xxx, 002xxx, 300xxx (ChiNext)
-        if code.startswith(('600', '601', '603', '688')):
+        # Shanghai: 600xxx, 601xxx, 603xxx, 605xxx, 688xxx (STAR Market)
+        # Shenzhen: 000xxx, 001xxx, 002xxx, 003xxx, 300xxx, 301xxx (ChiNext)
+        if code.startswith(('600', '601', '603', '605', '688')):
             return f"{code}.SH"
-        elif code.startswith(('000', '002', '300')):
+        elif code.startswith(('000', '001', '002', '003', '300', '301')):
             return f"{code}.SZ"
         else:
             logger.warning(f"无法确定股票 {code} 的市场，默认使用深市")
@@ -337,9 +372,6 @@ class TushareFetcher(BaseFetcher):
         # US stocks not supported
         if _is_us_code(stock_code):
             raise DataFetchError(f"TushareFetcher 不支持美股 {stock_code}，请使用 AkshareFetcher 或 YfinanceFetcher")
-        
-        # Rate-limit check
-        self._check_rate_limit()
         
         # Convert code format
         ts_code = self._convert_stock_code(stock_code)
@@ -448,9 +480,6 @@ class TushareFetcher(BaseFetcher):
             self._stock_name_cache = {}
         
         try:
-            # 速率限制检查
-            self._check_rate_limit()
-            
             # 转换代码格式
             ts_code = self._convert_stock_code(stock_code)
             
@@ -491,9 +520,6 @@ class TushareFetcher(BaseFetcher):
             return None
         
         try:
-            # 速率限制检查
-            self._check_rate_limit()
-            
             # 调用 stock_basic 接口获取所有股票
             df = self._api.stock_basic(
                 exchange='',
@@ -540,9 +566,6 @@ class TushareFetcher(BaseFetcher):
             RealtimeSource,
             safe_float, safe_int
         )
-
-        # 速率限制检查
-        self._check_rate_limit()
 
         # 尝试 Pro 接口
         try:
@@ -658,8 +681,6 @@ class TushareFetcher(BaseFetcher):
         }
 
         try:
-            self._check_rate_limit()
-
             # Tushare index_daily 获取历史数据，实时数据需用其他接口或估算
             # 由于 Tushare 免费用户可能无法获取指数实时行情，这里作为备选
             # 使用 index_daily 获取最近交易日数据
@@ -717,7 +738,6 @@ class TushareFetcher(BaseFetcher):
             return None
 
         try:
-            self._check_rate_limit()
             logger.info("[API调用] ts.pro_api() 获取市场统计...")
             
             # 获取当前中国时间，判断是否在交易时间内

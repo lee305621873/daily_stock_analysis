@@ -26,7 +26,9 @@ AkshareFetcher - 主数据源 (Priority 1)
 import logging
 import os
 import random
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
@@ -275,9 +277,36 @@ class AkshareFetcher(BaseFetcher):
         self.sleep_min = sleep_min
         self.sleep_max = sleep_max
         self._last_request_time: Optional[float] = None
+        self._daily_data_hint_local = threading.local()
         # 东财补丁开启才执行打补丁操作
         if get_config().enable_eastmoney_patch:
             eastmoney_patch()
+
+    @contextmanager
+    def daily_data_hint(self, hint: Optional[Dict[str, Any]] = None):
+        """
+        Attach a thread-local daily-data hint for a single manager invocation.
+
+        This keeps concurrent scan workers isolated while allowing the manager to
+        steer Akshare away from the same upstream family that just failed.
+        """
+        had_previous = hasattr(self._daily_data_hint_local, "value")
+        previous = getattr(self._daily_data_hint_local, "value", None)
+        if hint is None:
+            yield
+            return
+        self._daily_data_hint_local.value = dict(hint)
+        try:
+            yield
+        finally:
+            if had_previous:
+                self._daily_data_hint_local.value = previous
+            elif hasattr(self._daily_data_hint_local, "value"):
+                delattr(self._daily_data_hint_local, "value")
+
+    def _get_daily_data_hint(self) -> Dict[str, Any]:
+        value = getattr(self._daily_data_hint_local, "value", None)
+        return value if isinstance(value, dict) else {}
     
     def _set_random_user_agent(self) -> None:
         """
@@ -364,14 +393,28 @@ class AkshareFetcher(BaseFetcher):
         """
         # 尝试列表
         methods = [
-            (self._fetch_stock_data_em, "东方财富"),
-            (self._fetch_stock_data_sina, "新浪财经"),
-            (self._fetch_stock_data_tx, "腾讯财经"),
+            ("em", self._fetch_stock_data_em, "东方财富"),
+            ("sina", self._fetch_stock_data_sina, "新浪财经"),
+            ("tx", self._fetch_stock_data_tx, "腾讯财经"),
         ]
+        hint = self._get_daily_data_hint()
+        skip_sources = {
+            str(item).strip().lower()
+            for item in (hint.get("skip_sources") or [])
+            if str(item).strip()
+        }
+        if skip_sources:
+            methods = [item for item in methods if item[0] not in skip_sources]
+            logger.info(
+                "[数据源] %s 日线 hint 生效: skip_sources=%s, reason=%s",
+                stock_code,
+                sorted(skip_sources),
+                hint.get("reason", ""),
+            )
 
         last_error = None
 
-        for fetch_method, source_name in methods:
+        for _source_key, fetch_method, source_name in methods:
             try:
                 logger.info(f"[数据源] 尝试使用 {source_name} 获取 {stock_code}...")
                 df = fetch_method(stock_code, start_date, end_date)
