@@ -34,7 +34,7 @@ demo
 | 分析 | 多维度分析 | 技术面（盘中实时 MA/多头排列）+ 筹码分布 + 舆情情报 + 实时行情 |
 | 市场 | 全球市场 | 支持 A股、港股、美股及美股指数（SPX、DJI、IXIC 等） |
 | 首页 | 券商月度金股 | 首页新增 `券商月度金股` 卡片，读取 Tushare `broker_recommend` 聚合结果，支持页面内“立即刷新”、切换月份、`按股票/按券商` 双视图；点击股票可直接发起分析 |
-| 选股 | 技术指标扫描 | Web 主站新增 `选股` Tab，默认进入公式选股；支持 A 股/港股/美股 `条件模式`、`公式模式`、`组合模式（公式+条件）`，扫描范围由后端统一维护；A 股除预置板块外还支持从真实行业/概念板块目录选择具体板块并预览真实成分股，A 股预置板块快捷入口也会尝试加载真实板块预览；A 股板块成分股链路已升级为 `AkShare -> Tushare -> 搜狐板块页 -> 本地维护清单`（会在数量偏少时尝试自动补全），且展示顺序默认以 Sohu 实时抓取顺序为准；后端新增完整板块成分股接口，便于脚本和后续页面复用；港股/美股新增后端维护的行业板块池，并按“龙头 / 中军 / 弹性”分层维护，且港股全市场列表新增 `AkShare stock_hk_spot` 兜底以提升动态板块可用性；当前已补充半导体、科技、消费、金融、公用事业、REITs、航空航天军工等可配置板块，前端选中后会直接展示分层明细，且扫描范围元数据会优先走本地配置预览以避免页面回退成仅显示全市场；后续可继续替换为更真实的数据源；支持扫描上限与指标提示；A 股全市场扫描会自动转后台任务并通过 SSE 实时刷新进度 |
+| 选股 | 技术指标扫描 | Web 主站新增 `选股` Tab，默认进入公式选股；支持 A 股/港股/美股 `条件模式`、`公式模式`、`组合模式（公式+条件）`，扫描范围由后端统一维护；A 股除预置板块外还支持从真实行业/概念板块目录选择具体板块并预览真实成分股，A 股预置板块快捷入口也会尝试加载真实板块预览；A 股板块成分股链路已升级为 `AkShare -> Tushare -> 搜狐板块页 -> 本地维护清单`（会在数量偏少时尝试自动补全），且展示顺序默认以 Sohu 实时抓取顺序为准；后端新增完整板块成分股接口，便于脚本和后续页面复用；港股/美股新增后端维护的行业板块池，并按“龙头 / 中军 / 弹性”分层维护，且港股全市场列表新增 `AkShare stock_hk_spot` 兜底以提升动态板块可用性；当前已补充半导体、`CPO`、`PCB`、`光芯片`、科技、消费、金融、公用事业、REITs、航空航天军工等可配置板块，其中 `光芯片` 在公开站点缺少统一板块名时按光通信产业链并集维护；前端选中后会直接展示分层明细，且扫描范围元数据会优先走本地配置预览以避免页面回退成仅显示全市场；后续可继续替换为更真实的数据源；支持扫描上限与指标提示；A 股全市场扫描会自动转后台任务并通过 SSE 实时刷新进度 |
 
 > 选股页的指标元数据、公式函数列表与公式校验现已和行情数据源初始化解耦；即使本地尚未装全 AkShare / Tushare / YFinance 等行情依赖，页面也能先加载基础配置并完成公式校验。实际执行扫描时仍需对应的数据源环境可用。
 | 基本面 | 结构化聚合 | 新增 `fundamental_context`（valuation/growth/earnings/institution/capital_flow/dragon_tiger/boards，其中 `boards` 表示板块涨跌榜），主链路 fail-open 降级 |
@@ -61,7 +61,7 @@ demo
 
 > 选股页支持“组合模式（公式 + 条件）”：命中结果需同时满足公式和条件；条件编辑器已简化为“单输出指标不再显示输出下拉，cross_up/cross_down 自动切到指标对比”；操作按钮区取消固定吸顶，改为随页面自然滚动。
 
-> 选股板块支持本地持久化缓存。可使用 `python scripts/refresh_screener_board_cache.py --markets cn,hk,us` 预生成板块目录与成分股缓存；运行后 Web/API 会优先读取 `data/stock_screener/board_cache.json`，避免每次页面打开都实时请求外部接口。A 股缓存链路为 `AkShare -> Tushare -> 搜狐板块页 -> 本地维护清单`；港股/美股缓存链路会优先尝试 `AkShare 全市场列表 + 东方财富知名港美股池 + YFinance 行业画像` 自动扩充板块成分股，其中港股全市场代码获取新增 `stock_hk_spot` 兜底，失败时再回退到仓库内置种子池。默认会额外预热每个 A 股板块类型（行业/概念）前 12 个板块到缓存，以便扫描范围自动扩展到 15+；若要批量缓存全部 A 股动态行业/概念板块，可额外加 `--cn-all-dynamic`（耗时较长，建议按需执行），也可通过 `--cn-seed-per-type` 调整默认预热数量；若只想快速落盘内置港美股种子池，可加 `--skip-overseas-live`。
+> 选股板块支持本地持久化缓存。可使用 `python scripts/refresh_screener_board_cache.py --markets cn,hk,us` 预生成板块目录与成分股缓存；运行后 Web/API 会优先读取 `data/stock_screener/board_cache.json`，避免每次页面打开都实时请求外部接口。A 股缓存链路为 `AkShare -> Tushare -> 搜狐板块页 -> 本地维护清单`；港股/美股缓存链路会优先尝试 `AkShare 全市场列表 + 东方财富知名港美股池 + YFinance 行业画像` 自动扩充板块成分股，其中港股全市场代码获取新增 `stock_hk_spot` 兜底，失败时再回退到仓库内置种子池。仓库现已内置 `CPO(29)`、`PCB(87)`、`光芯片(207)` 三个 A 股概念板块缓存，其中 `光芯片` 按搜狐 `光通信/光电子/光纤光缆/光学/激光概念`、同花顺 `光纤概念` 并参考东方财富光通信相关概念目录维护。默认会额外预热每个 A 股板块类型（行业/概念）前 12 个板块到缓存，以便扫描范围自动扩展到 15+；若要批量缓存全部 A 股动态行业/概念板块，可额外加 `--cn-all-dynamic`（耗时较长，建议按需执行），也可通过 `--cn-seed-per-type` 调整默认预热数量；若只想快速落盘内置港美股种子池，可加 `--skip-overseas-live`。
 
 > 如需直接导出板块代码，可运行 `python scripts/export_board_codes.py --market cn --board-type industry --board-name 半导体`；半导体也保留了快捷脚本 `python scripts/export_semiconductor_codes.py`。脚本与 API 现在共用同一条 A 股板块链路：`AkShare -> Tushare -> 搜狐板块页 -> 仓库维护清单`。
 
@@ -202,7 +202,7 @@ demo
 | `SEARXNG_BASE_URLS` | SearXNG 自建实例（无配额兜底，需在 settings.yml 启用 format: json） | 可选 |
 | `TUSHARE_TOKEN` | [Tushare Pro](https://tushare.pro/weborder/#/login?reg=834638 ) Token | 可选 |
 | `TUSHARE_API_URL` | Tushare Pro 接口地址，默认 `http://api.tushare.pro`；试用接口可改为自定义域名 | 可选 |
-| `TUSHARE_RATE_LIMIT_PER_MINUTE` | Tushare 本地每分钟限流，默认 `80`；设为 `0` 可关闭本地限流 | 可选 |
+| `TUSHARE_RATE_LIMIT_PER_MINUTE` | Tushare 本地每分钟限流，默认 `80`；设为 `0` 可关闭本地限流。空值/非法值会自动回退到默认值并输出告警日志 | 可选 |
 | `PREFETCH_REALTIME_QUOTES` | 实时行情预取开关：设为 `false` 可禁用全市场预取（默认 `true`） | 可选 |
 | `WECHAT_MSG_TYPE` | 企微消息类型，默认 markdown，支持配置 text 类型，发送纯 markdown 文本 | 可选 |
 | `NEWS_MAX_AGE_DAYS` | 新闻最大时效（天），默认 3，避免使用过时信息 | 可选 |

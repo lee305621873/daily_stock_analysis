@@ -5,6 +5,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from src.data.stock_screener_cn_special_board_data import (
+    CN_CPO_FALLBACK_CODES,
+    CN_OPTICAL_CHIP_FALLBACK_CODES,
+    CN_PCB_FALLBACK_CODES,
+)
+
 
 ScopeConfig = Dict[str, Any]
 BoardConfig = Dict[str, Any]
@@ -44,6 +50,33 @@ STOCK_SCREENER_SCOPE_CONFIG: Dict[str, List[ScopeConfig]] = {
                 "600703", "688981", "300458", "688126", "002049", "600460", "688120", "002156",
                 "300782", "603501", "688361", "300327",
             ],
+        },
+        {
+            "key": "cn_cpo",
+            "label": "A 股CPO",
+            "description": "基于搜狐 CPO 概念页与同花顺共封装光学(CPO)公开成分股维护，优先使用缓存与实时板块结果。",
+            "kind": "board",
+            "board_type": "concept",
+            "board_name": "CPO",
+            "fallback_codes": CN_CPO_FALLBACK_CODES,
+        },
+        {
+            "key": "cn_pcb",
+            "label": "A 股PCB",
+            "description": "基于搜狐 PCB 概念页与同花顺 PCB 概念公开成分股维护，优先使用缓存与实时板块结果。",
+            "kind": "board",
+            "board_type": "concept",
+            "board_name": "PCB",
+            "fallback_codes": CN_PCB_FALLBACK_CODES,
+        },
+        {
+            "key": "cn_optical_chip",
+            "label": "A 股光芯片",
+            "description": "公开站点缺少统一“光芯片”板块名时，按搜狐光通信/光电子/光纤光缆/光学/激光概念与同花顺光纤概念并集维护，并参考东方财富光通信相关概念目录。",
+            "kind": "board",
+            "board_type": "concept",
+            "board_name": "光芯片",
+            "fallback_codes": CN_OPTICAL_CHIP_FALLBACK_CODES,
         },
         {
             "key": "cn_ai",

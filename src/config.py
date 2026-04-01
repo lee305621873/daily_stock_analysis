@@ -55,6 +55,31 @@ def parse_env_bool(value: Optional[str], default: bool = False) -> bool:
     return normalized not in _FALSEY_ENV_VALUES
 
 
+def parse_env_int(value: Optional[str], default: int, field: str = "") -> int:
+    """Parse an int-like env value with lenient fallback behavior."""
+    raw = value
+    if raw is None:
+        return default
+    normalized = str(raw).strip()
+    if not normalized:
+        return default
+    if normalized[0] in ("'", '"') and normalized[-1] == normalized[0] and len(normalized) >= 2:
+        normalized = normalized[1:-1].strip()
+    if not normalized:
+        return default
+    try:
+        return int(normalized)
+    except (TypeError, ValueError):
+        if field:
+            logging.getLogger(__name__).warning(
+                "Invalid %s=%r, fallback to default %s",
+                field,
+                raw,
+                default,
+            )
+        return default
+
+
 def canonicalize_llm_channel_protocol(value: Optional[str]) -> str:
     """Normalize a protocol label into a LiteLLM provider identifier."""
     candidate = (value or "").strip().lower().replace("-", "_")
@@ -845,7 +870,11 @@ class Config:
             feishu_folder_token=os.getenv('FEISHU_FOLDER_TOKEN'),
             tushare_token=os.getenv('TUSHARE_TOKEN'),
             tushare_api_url=os.getenv('TUSHARE_API_URL', 'http://api.tushare.pro').strip() or 'http://api.tushare.pro',
-            tushare_rate_limit_per_minute=int(os.getenv('TUSHARE_RATE_LIMIT_PER_MINUTE', '80')),
+            tushare_rate_limit_per_minute=parse_env_int(
+                os.getenv('TUSHARE_RATE_LIMIT_PER_MINUTE'),
+                80,
+                field='TUSHARE_RATE_LIMIT_PER_MINUTE',
+            ),
             litellm_model=litellm_model,
             litellm_fallback_models=litellm_fallback_models,
             llm_temperature=resolve_unified_llm_temperature(litellm_model),
@@ -972,7 +1001,14 @@ class Config:
             log_dir=os.getenv('LOG_DIR', './logs'),
             log_level=os.getenv('LOG_LEVEL', 'INFO'),
             max_workers=int(os.getenv('MAX_WORKERS', '3')),
-            stock_screener_max_workers=max(1, int(os.getenv('STOCK_SCREENER_MAX_WORKERS', '16'))),
+            stock_screener_max_workers=max(
+                1,
+                parse_env_int(
+                    os.getenv('STOCK_SCREENER_MAX_WORKERS'),
+                    16,
+                    field='STOCK_SCREENER_MAX_WORKERS',
+                ),
+            ),
             stock_screener_progress_update_step=max(1, int(os.getenv('STOCK_SCREENER_PROGRESS_UPDATE_STEP', '5'))),
             debug=os.getenv('DEBUG', 'false').lower() == 'true',
             config_validate_mode=os.getenv('CONFIG_VALIDATE_MODE', 'warn').lower(),

@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - 选股扫描接口在“未显式传入 `codes` 且存在有效范围（scope/board）”时改为默认后台任务（`202 + task_id`），降低范围扫描直接命中 HTTP 超时的概率；Web 端同步按该规则优先走异步进度流。
   - 修复扫描范围元数据接口过慢导致前端回退为“仅 A 股全市场”的问题；现在扫描范围列表优先使用本地配置预览，页面可稳定展示 A 股预置板块、动态行业/概念板块和自定义股票池入口。
   - A 股预置板块快捷入口（如 `A股半导体`）现在也会主动加载真实板块预览；若实时板块接口失败，则回退到维护清单，避免页面误以为该范围只有 20 只代表股。
+  - A 股预置概念板块新增 `CPO / PCB / 光芯片`；其中 `CPO` 与 `PCB` 基于搜狐 + 同花顺公开板块页维护，`光芯片` 在缺少统一公开板块名时按搜狐 `光通信/光电子/光纤光缆/光学/激光概念`、同花顺 `光纤概念` 并参考东方财富光通信相关概念目录维护，仓库内置缓存总条目达到 `323`。
   - 新增 `scripts/export_board_codes.py` 与 `scripts/export_semiconductor_codes.py`，可直接导出 A/H/US 板块代码；A 股脚本与 API 共用同一条 `AkShare -> Tushare -> 本地维护清单` 成分股链路，避免维护两套逻辑。
   - A 股完整板块成分股链路升级为 `AkShare -> Tushare -> 本地维护清单`；并新增 `GET /api/v1/stocks/screener/boards/constituents`，可直接获取完整板块成分股列表，便于脚本、Web 和后续批量分析能力复用。
 
@@ -74,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - 条件选股指标扩展：新增 `HEAT / PE / PB / PEG / ROE / REVENUE_YOY / NET_PROFIT_YOY`；其中 `PEG` 按 `PE / 净利润同比(%)` 估算，净利润同比<=0或缺失时自动判定为不可用。
   - 条件引擎新增“技术序列指标 + 估值/基本面标量指标”混合比较能力；仅当请求中使用相关指标时才按需拉取实时估值/基本面数据，并在扫描日志输出标量指标覆盖率（available/missing）便于定位数据源缺失。
   - A 股板块 AkShare 接口新增稳定性增强：对瞬时网络错误自动重试（指数退避）、连续失败熔断与快速失败；并在落缓存时启用 `stale-if-error`（空结果不覆盖已有缓存成分股），降低上游短时抖动对扫描可用性的影响。
+  - 配置加载容错增强：`TUSHARE_RATE_LIMIT_PER_MINUTE` 与 `STOCK_SCREENER_MAX_WORKERS` 支持空值/异常值自动回退默认值（并记录告警），避免因 `.env` 非法整数导致服务启动失败。
 
 ## [3.7.0] - 2026-03-15
 

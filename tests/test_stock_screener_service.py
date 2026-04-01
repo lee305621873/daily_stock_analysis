@@ -304,6 +304,30 @@ class StockScreenerServiceTestCase(unittest.TestCase):
         self.assertEqual(semiconductor.preview_codes[:2], ["603986", "688041"])
         self.assertGreaterEqual(semiconductor.estimated_count or 0, 10)
 
+    def test_scope_catalog_includes_special_cn_concept_scopes(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        with patch("src.services.stock_screener_service._fetch_cn_board_constituents") as fetch_constituents:
+            scopes = service.scope_catalog(MarketType.CN)
+
+        fetch_constituents.assert_not_called()
+
+        cpo = next(item for item in scopes if item.key == "cn_cpo")
+        pcb = next(item for item in scopes if item.key == "cn_pcb")
+        optical_chip = next(item for item in scopes if item.key == "cn_optical_chip")
+
+        self.assertEqual(cpo.board_name, "CPO")
+        self.assertEqual(cpo.preview_codes[:2], ["300548", "688498"])
+        self.assertGreaterEqual(cpo.estimated_count or 0, 29)
+
+        self.assertEqual(pcb.board_name, "PCB")
+        self.assertEqual(pcb.preview_codes[:2], ["301366", "002916"])
+        self.assertGreaterEqual(pcb.estimated_count or 0, 87)
+
+        self.assertEqual(optical_chip.board_name, "光芯片")
+        self.assertEqual(optical_chip.preview_codes[:2], ["002725", "301165"])
+        self.assertGreaterEqual(optical_chip.estimated_count or 0, 207)
+
     def test_scope_catalog_prefers_cached_cn_board_constituents(self) -> None:
         service = StockScreenerService(manager=_FakeManager())
         self._board_cache["constituents"]["cn:industry:半导体"] = {
@@ -417,6 +441,27 @@ class StockScreenerServiceTestCase(unittest.TestCase):
 
         self.assertEqual([item.board_name for item in boards], ["半导体", "白酒"])
         self.assertEqual(boards[0].estimated_count, 132)
+
+    def test_board_catalog_merges_local_cn_concept_scope(self) -> None:
+        service = StockScreenerService(manager=_FakeManager())
+
+        with patch("src.services.stock_screener_service._fetch_cn_board_catalog") as fetch_catalog:
+            fetch_catalog.return_value = (
+                [
+                    {"board_name": "CPO", "label": "CPO", "estimated_count": None},
+                    {"board_name": "PCB", "label": "PCB", "estimated_count": None},
+                ],
+                "akshare",
+            )
+
+            boards = service.board_catalog(MarketType.CN, ScreenerBoardType.CONCEPT)
+
+        board_names = {item.board_name for item in boards}
+        self.assertIn("CPO", board_names)
+        self.assertIn("PCB", board_names)
+        self.assertIn("光芯片", board_names)
+        optical_chip = next(item for item in boards if item.board_name == "光芯片")
+        self.assertGreaterEqual(optical_chip.estimated_count or 0, 207)
 
     def test_board_catalog_prefers_cached_constituent_count_for_estimated_count(self) -> None:
         service = StockScreenerService(manager=_FakeManager())

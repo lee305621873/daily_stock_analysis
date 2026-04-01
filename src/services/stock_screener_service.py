@@ -498,6 +498,59 @@ def _fallback_cn_board_catalog(board_type: str) -> List[Dict[str, Any]]:
     return boards
 
 
+def _merge_cn_catalog_with_scope_boards(rows: List[Dict[str, Any]], board_type: str) -> List[Dict[str, Any]]:
+    merged: List[Dict[str, Any]] = []
+    index_by_name: Dict[str, int] = {}
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        board_name = str(row.get("board_name") or "").strip()
+        if not board_name:
+            continue
+        normalized_row = dict(row)
+        index_by_name[board_name] = len(merged)
+        merged.append(normalized_row)
+
+    for scope in STOCK_SCREENER_SCOPE_CONFIG.get("cn", []):
+        if str(scope.get("kind") or "") != "board":
+            continue
+        if str(scope.get("board_type") or "") != board_type:
+            continue
+        board_name = str(scope.get("board_name") or "").strip()
+        if not board_name:
+            continue
+        fallback_codes = [str(code).strip() for code in list(scope.get("fallback_codes") or []) if str(code).strip()]
+        description = str(scope.get("description") or "").strip() or None
+        existing_index = index_by_name.get(board_name)
+        if existing_index is None:
+            index_by_name[board_name] = len(merged)
+            merged.append(
+                {
+                    "board_name": board_name,
+                    "label": str(scope.get("label") or board_name),
+                    "board_code": None,
+                    "estimated_count": len(fallback_codes) or None,
+                    "description": description,
+                    "source": "config_fallback",
+                }
+            )
+            continue
+
+        existing_row = dict(merged[existing_index])
+        if not existing_row.get("label"):
+            existing_row["label"] = str(scope.get("label") or board_name)
+        if not existing_row.get("estimated_count") and fallback_codes:
+            existing_row["estimated_count"] = len(fallback_codes)
+        if not existing_row.get("description") and description:
+            existing_row["description"] = description
+        if not existing_row.get("source"):
+            existing_row["source"] = "config_fallback"
+        merged[existing_index] = existing_row
+
+    return merged
+
+
 def _extract_board_codes(board: Dict[str, Any]) -> List[str]:
     direct_codes = list(board.get("codes") or [])
     if direct_codes:
@@ -1754,6 +1807,7 @@ class StockScreenerService:
                     raise
                 source = str(rows[0].get("source") or "").strip() or "config_fallback"
                 logger.warning("Falling back to CN %s boards from %s: %s", board_type.value, source, exc)
+            rows = _merge_cn_catalog_with_scope_boards(rows, board_type.value)
             logger.info("Loaded %s CN %s boards from %s", len(rows), board_type.value, source)
         else:
             rows = list(STOCK_SCREENER_DYNAMIC_BOARD_CONFIG.get(_scope_market_key(market), {}).get(board_type.value, []))

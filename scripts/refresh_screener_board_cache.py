@@ -32,6 +32,7 @@ from src.services.stock_screener_service import (
     _extract_board_codes,
     _fallback_cn_board_catalog,
     _fetch_cn_board_catalog,
+    _merge_cn_catalog_with_scope_boards,
 )
 
 
@@ -117,11 +118,12 @@ def _config_board_items(codes: Iterable[str]) -> List[Dict[str, str]]:
 
 def _load_cn_catalog_rows(board_type: str) -> Tuple[List[Dict[str, object]], str]:
     try:
-        return _fetch_cn_board_catalog(board_type)
+        rows, source = _fetch_cn_board_catalog(board_type)
     except Exception:
         rows = _fallback_cn_board_catalog(board_type)
         source = str(rows[0].get("source") or "").strip() if rows else ""
-        return rows, source or "config_fallback"
+    rows = _merge_cn_catalog_with_scope_boards(rows, board_type)
+    return rows, source or "config_fallback"
 
 
 def _refresh_cn_market(

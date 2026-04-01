@@ -1,0 +1,1651 @@
+{
+  "summary": {
+    "CPO": 29,
+    "PCB": 87,
+    "光芯片": 207,
+    "total_entries": 323,
+    "unique_all": 275,
+    "sources": {
+      "CPO": [
+        "搜狐:CPO概念(6579)",
+        "同花顺:共封装光学(CPO)(886033)"
+      ],
+      "PCB": [
+        "搜狐:PCB概念(7713)",
+        "同花顺:PCB概念(885959)"
+      ],
+      "光芯片": [
+        "搜狐:光通信(7732)",
+        "搜狐:光电子(7811)",
+        "搜狐:光纤光缆(7710)",
+        "搜狐:光学(7759)",
+        "搜狐:激光概念(7729)",
+        "同花顺:光纤概念(886084)",
+        "东方财富:概念目录中存在光通信模块/PCB/CPO等光通信相关概念"
+      ]
+    }
+  },
+  "boards": {
+    "CPO": [
+      {
+        "code": "300548",
+        "name": "长芯博创",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "688498",
+        "name": "源杰科技",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "301205",
+        "name": "联特科技",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "301165",
+        "name": "锐捷网络",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "600487",
+        "name": "亨通光电",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "002156",
+        "name": "通富微电",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "688195",
+        "name": "腾景科技",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "603773",
+        "name": "沃格光电",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "000070",
+        "name": "特发信息",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "300757",
+        "name": "罗博特科",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "920045",
+        "name": "蘅东光",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "002281",
+        "name": "光迅科技",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "301312",
+        "name": "智立方",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "300308",
+        "name": "中际旭创",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "300502",
+        "name": "新易盛",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "603031",
+        "name": "安孚科技",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "300303",
+        "name": "聚飞光电",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "300394",
+        "name": "天孚通信",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "300620",
+        "name": "光库科技",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "688313",
+        "name": "仕佳光子",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "002396",
+        "name": "星网锐捷",
+        "source": "sohu:6579"
+      },
+      {
+        "code": "300964",
+        "name": "本川智能",
+        "source": "ths:886033"
+      },
+      {
+        "code": "688025",
+        "name": "杰普特",
+        "source": "ths:886033"
+      },
+      {
+        "code": "688167",
+        "name": "炬光科技",
+        "source": "ths:886033"
+      },
+      {
+        "code": "920981",
+        "name": "晶赛科技",
+        "source": "ths:886033"
+      },
+      {
+        "code": "688048",
+        "name": "长光华芯",
+        "source": "ths:886033"
+      },
+      {
+        "code": "002579",
+        "name": "中京电子",
+        "source": "ths:886033"
+      },
+      {
+        "code": "002902",
+        "name": "铭普光磁",
+        "source": "ths:886033"
+      },
+      {
+        "code": "600105",
+        "name": "永鼎股份",
+        "source": "ths:886033"
+      }
+    ],
+    "PCB": [
+      {
+        "code": "301366",
+        "name": "一博科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002916",
+        "name": "深南电路",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "920357",
+        "name": "雅葆轩",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "688700",
+        "name": "东威科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "688388",
+        "name": "嘉元科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301526",
+        "name": "国际复材",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "603920",
+        "name": "世运电路",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "603110",
+        "name": "东方材料",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002463",
+        "name": "沪电股份",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "688308",
+        "name": "欧科亿",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "600176",
+        "name": "中国巨石",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "688519",
+        "name": "南亚新材",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "603386",
+        "name": "骏亚科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "001266",
+        "name": "宏英智能",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301628",
+        "name": "强达电路",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301362",
+        "name": "民爆光电",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002866",
+        "name": "传艺科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "605589",
+        "name": "圣泉集团",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301377",
+        "name": "鼎泰高科",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "603228",
+        "name": "景旺电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002927",
+        "name": "泰永长征",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "688655",
+        "name": "迅捷兴",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300476",
+        "name": "胜宏科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "603124",
+        "name": "江南新材",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301176",
+        "name": "逸豪新材",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300657",
+        "name": "弘信电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "605058",
+        "name": "澳弘电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002636",
+        "name": "金安国纪",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300814",
+        "name": "中富电路",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002134",
+        "name": "天津普林",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002436",
+        "name": "兴森科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300852",
+        "name": "四会富仕",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "688359",
+        "name": "三孚新科",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301630",
+        "name": "同宇新材",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300903",
+        "name": "科翔股份",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "920060",
+        "name": "万源通",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301132",
+        "name": "满坤科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "920821",
+        "name": "则成电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301563",
+        "name": "云汉芯城",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "688603",
+        "name": "天承科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "601208",
+        "name": "东材科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301568",
+        "name": "思泰克",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002544",
+        "name": "普天科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "688020",
+        "name": "方邦股份",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300964",
+        "name": "本川智能",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301200",
+        "name": "大族数控",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "603175",
+        "name": "超颖电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002938",
+        "name": "鹏鼎控股",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002741",
+        "name": "光华科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301282",
+        "name": "金禄电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002288",
+        "name": "*ST超华",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "605258",
+        "name": "协和电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300936",
+        "name": "中英科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300410",
+        "name": "正业科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "001389",
+        "name": "广合科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "688630",
+        "name": "芯碁微装",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002579",
+        "name": "中京电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301041",
+        "name": "金百泽",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002384",
+        "name": "东山精密",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300580",
+        "name": "贝斯特",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "603328",
+        "name": "依顿电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002848",
+        "name": "*ST高斯",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002913",
+        "name": "奥士康",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300537",
+        "name": "广信材料",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "603186",
+        "name": "华正新材",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300227",
+        "name": "光韵达",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "000657",
+        "name": "中钨高新",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300576",
+        "name": "容大感光",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "600601",
+        "name": "方正科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301217",
+        "name": "铜冠铜箔",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "688183",
+        "name": "生益电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "000823",
+        "name": "超声电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "603936",
+        "name": "博敏电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300739",
+        "name": "明阳电路",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "603002",
+        "name": "宏昌电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002815",
+        "name": "崇达技术",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "600183",
+        "name": "生益科技",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "301251",
+        "name": "威尔高",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300252",
+        "name": "金信诺",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "300196",
+        "name": "长海股份",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "002008",
+        "name": "大族激光",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "600990",
+        "name": "四创电子",
+        "source": "sohu:7713"
+      },
+      {
+        "code": "688025",
+        "name": "杰普特",
+        "source": "ths:885959"
+      },
+      {
+        "code": "301421",
+        "name": "波长光电",
+        "source": "ths:885959"
+      },
+      {
+        "code": "688610",
+        "name": "埃科光电",
+        "source": "ths:885959"
+      },
+      {
+        "code": "605006",
+        "name": "山东玻纤",
+        "source": "ths:885959"
+      },
+      {
+        "code": "688312",
+        "name": "燕麦科技",
+        "source": "ths:885959"
+      }
+    ],
+    "光芯片": [
+      {
+        "code": "002725",
+        "name": "跃岭股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301165",
+        "name": "锐捷网络",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "600487",
+        "name": "亨通光电",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002792",
+        "name": "通宇通讯",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300726",
+        "name": "宏达电子",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002897",
+        "name": "意华股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688170",
+        "name": "德龙激光",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "601869",
+        "name": "长飞光纤",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002796",
+        "name": "世嘉科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688172",
+        "name": "燕东微",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002515",
+        "name": "金字火腿",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603960",
+        "name": "克来机电",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301577",
+        "name": "美信科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "001267",
+        "name": "汇绿生态",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "001309",
+        "name": "德明利",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "000636",
+        "name": "风华高科",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688025",
+        "name": "杰普特",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300857",
+        "name": "协创数据",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603228",
+        "name": "景旺电子",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688655",
+        "name": "迅捷兴",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002475",
+        "name": "立讯精密",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300657",
+        "name": "弘信电子",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "600498",
+        "name": "烽火通信",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688226",
+        "name": "威腾电气",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300852",
+        "name": "四会富仕",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300903",
+        "name": "科翔股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300447",
+        "name": "全信股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603220",
+        "name": "中贝通信",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "000938",
+        "name": "紫光股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "600522",
+        "name": "中天科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "001255",
+        "name": "博菲电气",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301566",
+        "name": "达利凯普",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "000936",
+        "name": "华西股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "000586",
+        "name": "汇源通信",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "000026",
+        "name": "飞亚达",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300548",
+        "name": "长芯博创",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688662",
+        "name": "富信科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300843",
+        "name": "胜蓝股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688195",
+        "name": "腾景科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603083",
+        "name": "剑桥科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301183",
+        "name": "东田微",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300310",
+        "name": "宜通世纪",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300265",
+        "name": "通光线缆",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301312",
+        "name": "智立方",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002055",
+        "name": "ST得润",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603991",
+        "name": "至正股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002579",
+        "name": "中京电子",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301041",
+        "name": "金百泽",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688102",
+        "name": "斯瑞新材",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300395",
+        "name": "菲利华",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300250",
+        "name": "初灵信息",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688205",
+        "name": "德科立",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688183",
+        "name": "生益电子",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "000823",
+        "name": "超声电子",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688536",
+        "name": "思瑞浦",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300739",
+        "name": "明阳电路",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002951",
+        "name": "金时科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "920045",
+        "name": "蘅东光",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301251",
+        "name": "威尔高",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300252",
+        "name": "金信诺",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300394",
+        "name": "天孚通信",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002049",
+        "name": "紫光国微",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300565",
+        "name": "科信技术",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688807",
+        "name": "优迅股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002429",
+        "name": "兆驰股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002428",
+        "name": "云南锗业",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300184",
+        "name": "力源信息",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688400",
+        "name": "凌云光",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002860",
+        "name": "星帅尔",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301123",
+        "name": "奕东电子",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603306",
+        "name": "华懋科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "600103",
+        "name": "青山纸业",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603618",
+        "name": "杭电股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "600105",
+        "name": "永鼎股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603118",
+        "name": "共进股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688519",
+        "name": "南亚新材",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002222",
+        "name": "福晶科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688518",
+        "name": "联赢激光",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603052",
+        "name": "可川科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300287",
+        "name": "飞利信",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301628",
+        "name": "强达电路",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002962",
+        "name": "五方光电",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300620",
+        "name": "光库科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301338",
+        "name": "凯格精机",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688498",
+        "name": "源杰科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300102",
+        "name": "乾照光电",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "000801",
+        "name": "四川九洲",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300812",
+        "name": "易天股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002436",
+        "name": "兴森科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688609",
+        "name": "九联科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002025",
+        "name": "航天电器",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300757",
+        "name": "罗博特科",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002023",
+        "name": "海特高新",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300308",
+        "name": "中际旭创",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "000988",
+        "name": "华工科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688418",
+        "name": "震有科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300408",
+        "name": "三环集团",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300303",
+        "name": "聚飞光电",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688313",
+        "name": "仕佳光子",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300217",
+        "name": "东方电热",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002902",
+        "name": "铭普光磁",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603803",
+        "name": "瑞斯康达",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301205",
+        "name": "联特科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "600703",
+        "name": "三安光电",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603738",
+        "name": "泰晶科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002281",
+        "name": "光迅科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300504",
+        "name": "天邑股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300502",
+        "name": "新易盛",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603031",
+        "name": "安孚科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002384",
+        "name": "东山精密",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002848",
+        "name": "*ST高斯",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "003031",
+        "name": "中瓷电子",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301419",
+        "name": "阿莱德",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300571",
+        "name": "平治信息",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688143",
+        "name": "长盈通",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "600601",
+        "name": "方正科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "688048",
+        "name": "长光华芯",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603936",
+        "name": "博敏电子",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "000070",
+        "name": "特发信息",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002491",
+        "name": "通鼎互联",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "601231",
+        "name": "环旭电子",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "600184",
+        "name": "光电股份",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "301486",
+        "name": "致尚科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "002194",
+        "name": "武汉凡谷",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300570",
+        "name": "太辰光",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "603042",
+        "name": "华脉科技",
+        "source": "sohu:7732"
+      },
+      {
+        "code": "300489",
+        "name": "光智科技",
+        "source": "sohu:7811"
+      },
+      {
+        "code": "603690",
+        "name": "至纯科技",
+        "source": "sohu:7811"
+      },
+      {
+        "code": "600363",
+        "name": "联创光电",
+        "source": "sohu:7811"
+      },
+      {
+        "code": "603938",
+        "name": "三孚股份",
+        "source": "sohu:7710"
+      },
+      {
+        "code": "300292",
+        "name": "吴通控股",
+        "source": "sohu:7710"
+      },
+      {
+        "code": "002276",
+        "name": "万马股份",
+        "source": "sohu:7710"
+      },
+      {
+        "code": "300667",
+        "name": "必创科技",
+        "source": "sohu:7710"
+      },
+      {
+        "code": "600869",
+        "name": "远东股份",
+        "source": "sohu:7710"
+      },
+      {
+        "code": "002498",
+        "name": "汉缆股份",
+        "source": "sohu:7710"
+      },
+      {
+        "code": "000890",
+        "name": "法尔胜",
+        "source": "sohu:7710"
+      },
+      {
+        "code": "603217",
+        "name": "元利科技",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "300567",
+        "name": "精测电子",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "603688",
+        "name": "石英股份",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002263",
+        "name": "大东南",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "688079",
+        "name": "美迪凯",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "603297",
+        "name": "永新光学",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "301421",
+        "name": "波长光电",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002825",
+        "name": "纳尔股份",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002036",
+        "name": "联创电子",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "300331",
+        "name": "苏大维格",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "301479",
+        "name": "弘景光电",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "688307",
+        "name": "中润光学",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "603051",
+        "name": "鹿山新材",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "600071",
+        "name": "凤凰光学",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "603683",
+        "name": "晶华新材",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002632",
+        "name": "道明光学",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "301237",
+        "name": "和顺科技",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002273",
+        "name": "水晶光电",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "688260",
+        "name": "昀冢科技",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002338",
+        "name": "奥普光电",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "300790",
+        "name": "宇瞳光学",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "300305",
+        "name": "裕兴股份",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "300341",
+        "name": "麦克奥迪",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "688502",
+        "name": "茂莱光学",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "300691",
+        "name": "联合光电",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002585",
+        "name": "双星新材",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "301172",
+        "name": "君逸数码",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "603722",
+        "name": "阿科力",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "688127",
+        "name": "蓝特光学",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "300752",
+        "name": "隆利科技",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "688458",
+        "name": "美芯晟",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "600063",
+        "name": "皖维高新",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "003015",
+        "name": "日久光电",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "000973",
+        "name": "佛塑科技",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002189",
+        "name": "中光学",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002241",
+        "name": "歌尔股份",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "300806",
+        "name": "斯迪克",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "300802",
+        "name": "矩子科技",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "300169",
+        "name": "天晟新材",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "605228",
+        "name": "神通科技",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002389",
+        "name": "航天彩虹",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "688010",
+        "name": "福光股份",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "688011",
+        "name": "新光光电",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "688299",
+        "name": "长阳科技",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "603501",
+        "name": "豪威集团",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002456",
+        "name": "欧菲光",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "920001",
+        "name": "纬达光电",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "603005",
+        "name": "晶方科技",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "001373",
+        "name": "翔腾新材",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "603607",
+        "name": "京华激光",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "605118",
+        "name": "力鼎光电",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "002395",
+        "name": "双象股份",
+        "source": "sohu:7759"
+      },
+      {
+        "code": "301021",
+        "name": "英诺激光",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "688646",
+        "name": "ST逸飞",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "688291",
+        "name": "金橙子",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "300747",
+        "name": "锐科激光",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "300990",
+        "name": "同飞股份",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "002444",
+        "name": "巨星科技",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "600288",
+        "name": "大恒科技",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "002559",
+        "name": "亚威股份",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "300410",
+        "name": "正业科技",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "688007",
+        "name": "光峰科技",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "301218",
+        "name": "华是科技",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "688559",
+        "name": "海目星",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "300220",
+        "name": "金运激光",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "688188",
+        "name": "柏楚电子",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "920363",
+        "name": "莱赛激光",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "688167",
+        "name": "炬光科技",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "002008",
+        "name": "大族激光",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "300776",
+        "name": "帝尔激光",
+        "source": "sohu:7729"
+      },
+      {
+        "code": "002935",
+        "name": "天奥电子",
+        "source": "sohu:7729"
+      }
+    ]
+  }
+}
