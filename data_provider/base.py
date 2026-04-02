@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # `FATAL:address_pool_manager.cc ... Check failed: !pool->IsInitialized()`.
 # Serialize AkShare daily-data calls to avoid that hard crash.
 _AKSHARE_DAILY_DATA_LOCK = RLock()
-_TUSHARE_DAILY_ERROR_COOLDOWN_SECONDS = 180.0
+_TUSHARE_DAILY_ERROR_COOLDOWN_SECONDS = 10.0
 _TUSHARE_SERVER_ERROR_PATTERN = re.compile(r"Tushare API HTTP 5\d\d\b", re.IGNORECASE)
 _EASTMONEY_DAILY_FAILURE_PATTERN = re.compile(
     r"Eastmoney 历史K线接口失败: .*category=(remote_disconnect|rate_limit_or_anti_bot)",

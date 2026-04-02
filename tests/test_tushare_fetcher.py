@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Unit tests for Tushare fetcher endpoint patching."""
 
+import os
 import sys
 import types
 import unittest
@@ -27,6 +28,45 @@ class FakeSemaphore:
 
 
 class TestTushareFetcherEndpointPatch(unittest.TestCase):
+    def test_priority_prefers_explicit_env_value(self) -> None:
+        fake_api = types.SimpleNamespace(_DataApi__timeout=15)
+        fake_ts = types.SimpleNamespace(
+            set_token=MagicMock(),
+            pro_api=MagicMock(return_value=fake_api),
+        )
+
+        with patch.dict(sys.modules, {"tushare": fake_ts}):
+            with patch.dict(os.environ, {"TUSHARE_PRIORITY": "2"}, clear=False):
+                with patch("data_provider.tushare_fetcher.get_config") as mock_get_config:
+                    mock_get_config.return_value = types.SimpleNamespace(
+                        tushare_token="trial-token",
+                        tushare_api_url="http://jiaoch.site",
+                        tushare_rate_limit_per_minute=80,
+                    )
+                    fetcher = TushareFetcher()
+
+        self.assertEqual(fetcher.priority, 2)
+
+    def test_priority_auto_boosts_when_env_not_explicit(self) -> None:
+        fake_api = types.SimpleNamespace(_DataApi__timeout=15)
+        fake_ts = types.SimpleNamespace(
+            set_token=MagicMock(),
+            pro_api=MagicMock(return_value=fake_api),
+        )
+
+        with patch.dict(sys.modules, {"tushare": fake_ts}):
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("TUSHARE_PRIORITY", None)
+                with patch("data_provider.tushare_fetcher.get_config") as mock_get_config:
+                    mock_get_config.return_value = types.SimpleNamespace(
+                        tushare_token="trial-token",
+                        tushare_api_url="http://jiaoch.site",
+                        tushare_rate_limit_per_minute=80,
+                    )
+                    fetcher = TushareFetcher()
+
+        self.assertEqual(fetcher.priority, -1)
+
     def test_init_reads_rate_limit_from_config(self) -> None:
         fake_api = types.SimpleNamespace(_DataApi__timeout=15)
         fake_ts = types.SimpleNamespace(

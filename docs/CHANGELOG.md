@@ -76,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - 条件引擎新增“技术序列指标 + 估值/基本面标量指标”混合比较能力；仅当请求中使用相关指标时才按需拉取实时估值/基本面数据，并在扫描日志输出标量指标覆盖率（available/missing）便于定位数据源缺失。
   - A 股板块 AkShare 接口新增稳定性增强：对瞬时网络错误自动重试（指数退避）、连续失败熔断与快速失败；并在落缓存时启用 `stale-if-error`（空结果不覆盖已有缓存成分股），降低上游短时抖动对扫描可用性的影响。
   - 配置加载容错增强：`TUSHARE_RATE_LIMIT_PER_MINUTE` 与 `STOCK_SCREENER_MAX_WORKERS` 支持空值/异常值自动回退默认值（并记录告警），避免因 `.env` 非法整数导致服务启动失败。
+  - 数据源优先级语义修正：当显式设置 `TUSHARE_PRIORITY` 时，`TushareFetcher` 将严格按配置值排序，不再在检测到 `TUSHARE_TOKEN` 后强制自动提升为 `Priority -1`；避免与 `AKSHARE_PRIORITY` 等手动优先级配置冲突。
 
 ## [3.7.0] - 2026-03-15
 

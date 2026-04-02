@@ -203,6 +203,8 @@ demo
 | `TUSHARE_TOKEN` | [Tushare Pro](https://tushare.pro/weborder/#/login?reg=834638 ) Token | 可选 |
 | `TUSHARE_API_URL` | Tushare Pro 接口地址，默认 `http://api.tushare.pro`；试用接口可改为自定义域名 | 可选 |
 | `TUSHARE_RATE_LIMIT_PER_MINUTE` | Tushare 本地每分钟限流，默认 `80`；设为 `0` 可关闭本地限流。空值/非法值会自动回退到默认值并输出告警日志 | 可选 |
+| `AKSHARE_PRIORITY` | AkShare 历史行情数据源优先级（数字越小优先级越高） | 可选 |
+| `TUSHARE_PRIORITY` | Tushare 历史行情数据源优先级；显式设置后将优先按该值，不再自动提升为 `-1` | 可选 |
 | `PREFETCH_REALTIME_QUOTES` | 实时行情预取开关：设为 `false` 可禁用全市场预取（默认 `true`） | 可选 |
 | `WECHAT_MSG_TYPE` | 企微消息类型，默认 markdown，支持配置 text 类型，发送纯 markdown 文本 | 可选 |
 | `NEWS_MAX_AGE_DAYS` | 新闻最大时效（天），默认 3，避免使用过时信息 | 可选 |
